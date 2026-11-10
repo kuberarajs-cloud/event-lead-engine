@@ -1,0 +1,20 @@
+# Secrets and local config. Never commit these.
+.env
+.env.*
+*.pem
+*.key
+secrets/
+cockpit/config.js
+
+# n8n exports can contain credential ids and webhook URLs. Check before committing.
+n8n/*.local.json
+
+# find_events.py output can hold names and page text
+scripts/out/
+scripts/manual/
+
+# Misc
+.DS_Store
+__pycache__/
+*.pyc
+node_modules/

@@ -1,0 +1,497 @@
+{
+  "name": "Lead Engine sourcing: events to leads",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "a6714c50-e088-40b2-ad6f-d16c09145dc8",
+      "name": "Manual run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -768,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 6
+            }
+          ]
+        }
+      },
+      "id": "85dcd839-6bdb-4ad5-9f78-0e84ff682829",
+      "name": "Weekly 06:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -768,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{sb:'YOUR_SUPABASE_URL',key:'YOUR_SUPABASE_PUBLISHABLE_KEY',tok:'YOUR_INGEST_TOKEN'}}];"
+      },
+      "id": "a027bf10-4ab9-4353-9608-cd790d4fd8ae",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.sb }}/rest/v1/events_public?pool_state=eq.top10&speakers_url=not.is.null&select=slug,name,market,speakers_url",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8381e3d8-5b75-4877-9b23-1770434b5648",
+      "name": "Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -336,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const PARSERS = {'manife.st': 'manifest', 'live.handelsblatt.com': 'handelsblatt', 'www.bme.de': 'bme', 'financeaccountingtech.com': 'fate', 'nrfbigshow.nrf.com': 'nrf', 'events.iofm.com': 'iofm', 'radiance.highradius.com':'radiance', 'cfoevents.financealliance.io':'acara'};\nconst base = $input.all().map(i => {\n  const e = i.json;\n  const m = String(e.speakers_url).match(/^(https?:\\/\\/([^\\/]+))(\\/[^\\s]*)?$/);\n  const full = m[3] || '/';\n  const path = full.split('#')[0].split('?')[0];\n  return {json: {slug: e.slug, name: e.name, market: e.market, url: e.speakers_url, origin: m[1], path: path, parser: PARSERS[m[2]] || null}};\n});\nconst EXTRA = [\n  {slug: 'handelsblatt-cpo-summit-2027', name: 'Handelsblatt CPO-Summit', market: 'DE', url: 'https://live.handelsblatt.com/event/handelsblatt-cpo-summit/cpo-summit-2025/referentinnen/', kind: 'speaker (2025 edition)'}\n];\nconst extras = EXTRA.map(e => { const m = e.url.match(/^(https:\\/\\/([^\\/]+))(\\/[^\\s]*)$/); return {json: {slug: e.slug, name: e.name, market: e.market, url: e.url, origin: m[1], path: m[3].split('?')[0].split('#')[0], parser: PARSERS[m[2]] || null, kind: e.kind}}; });\nreturn base.concat(extras);"
+      },
+      "id": "8cdc1925-4168-466f-811c-8930fe0119e9",
+      "name": "Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.origin + '/robots.txt' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "KuberCaseStudyBot/0.1 (research prototype; reads public speaker pages once, respects robots.txt)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "3d5a18d2-4806-47d8-a0d5-d3c19d70dfdc",
+      "name": "Robots",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        112,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500
+    },
+    {
+      "parameters": {
+        "jsCode": "const plan = $('Plan').all();\nreturn $input.all().map((r, i) => {\n  const p = plan[i].json;\n  const txt = String(r.json.data || '');\n  let allowed = true, reason = 'ok';\n  if (!p.parser) {\n    allowed = false; reason = 'no_parser_for_' + p.origin;\n  } else {\n    const lines = txt.split(/\\r?\\n/).map(l => l.replace(/#.*/, '').trim()).filter(Boolean);\n    let applies = false;\n    const rules = [];\n    for (const l of lines) {\n      const m = l.match(/^([a-z-]+)\\s*:\\s*(.*)$/i);\n      if (!m) continue;\n      const k = m[1].toLowerCase(), v = m[2].trim();\n      if (k === 'user-agent') applies = v === '*';\n      else if (applies && (k === 'disallow' || k === 'allow')) rules.push([k, v]);\n    }\n    let best = null;\n    for (const [k, v] of rules) {\n      if (v && p.path.startsWith(v) && (!best || v.length > best[1].length)) best = [k, v];\n    }\n    if (best && best[0] === 'disallow') { allowed = false; reason = 'robots_disallow ' + best[1]; }\n  }\n  return {json: {...p, node: 'Gate', allowed, reason}};\n});"
+      },
+      "id": "d41d8f71-01af-4797-864a-920a67a8ea76",
+      "name": "Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "afac637f-9ca4-4e62-a763-9731dda61e9e",
+              "leftValue": "={{ $json.allowed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "04cbaf64-6c9e-4cc0-897e-f27e3bd3a05b",
+      "name": "Allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "KuberCaseStudyBot/0.1 (research prototype; reads public speaker pages once, respects robots.txt)"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 2000
+            }
+          },
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "f0eea9bd-9978-44d1-83ca-505ddd53f804",
+      "name": "Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        784,
+        -80
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const html = String($json.data || '');\nconst src = $('Gate').item.json;\nconst dec = s => String(s || '')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCharCode(parseInt(h, 16)))\n  .replace(/&#(\\d+);/g, (m, d) => String.fromCharCode(+d))\n  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&nbsp;/g, ' ')\n  .replace(/\\s+/g, ' ').trim();\nconst cleanName = n => dec(n).replace(/^((prof\\.?|dr\\.?(-[a-z]+\\.?)?|dipl\\.-[a-z]+\\.?|mag\\.?|h\\.c\\.?)\\s+)+/i, '').replace(/,?\\s*(MBA|PhD|M\\.Sc\\.|MSc)\\.?$/i, '').trim();\n\nconst people = [];\nif (src.parser === 'radiance') {\n  const re = /alt=\"([^\"]*?)\\s*logo\"[^>]*>\\s*<\\/noscript>\\s*<div class=\"speaker-container\">\\s*<p class=\"session-speaker\">([\\s\\S]*?)<\\/p>\\s*<p class=\"speaker-desig\">([\\s\\S]*?)<\\/p>/gi;\n  for (const m of html.matchAll(re)) people.push({name: cleanName(m[2]), title: dec(m[3]), company: dec(m[1]).replace(/\\s+(Incorporated|Inc\\.?|Global)$/i, '')});\n}\nif (src.parser === 'acara') {\n  const re = /\"position\":\"([^\"]*)\",\"firstName\":\"([^\"]*)\",\"lastName\":\"([^\"]*)\"[\\s\\S]*?\"speakerCompany\":\\{\"companieId\":\"[^\"]*\",\"name\":\"([^\"]*)\"/g;\n  for (const m of html.matchAll(re)) people.push({name: cleanName(m[2] + ' ' + m[3]), title: dec(m[1]), company: dec(m[4])});\n}\nif (src.parser === 'manifest') {\n  const re = /<p class=\"speaker-name\">([\\s\\S]*?)<\\/p>\\s*<p class=\"speaker-title\">([\\s\\S]*?)<\\/p>\\s*<p class=\"speaker-company\">([\\s\\S]*?)<\\/p>/g;\n  for (const m of html.matchAll(re)) people.push({name: cleanName(m[1]), title: dec(m[2]), company: dec(m[3])});\n} else if (src.parser === 'handelsblatt') {\n  const re = /<span class=\"ce-speaker__name\">([\\s\\S]*?)<\\/span>\\s*<span class=\"ce-speaker__role\">([\\s\\S]*?)<\\/span>/g;\n  for (const m of html.matchAll(re)) {\n    const role = dec(m[2]);\n    const k = Math.max(role.lastIndexOf(' – '), role.lastIndexOf(' - '));\n    people.push({name: cleanName(m[1]), title: k > 0 ? role.slice(0, k) : role, company: k > 0 ? role.slice(k + 3) : ''});\n  }\n} else if (src.parser === 'bme') {\n  const body = html.slice(Math.max(0, html.indexOf('<body')));\n  const re = /<p class=\"mt-2 prose-sm line-clamp-2[^\"]*\">([\\s\\S]*?)<\\/p>/g;\n  for (const m of body.matchAll(re)) {\n    const parts = dec(m[1]).split(',').map(s => s.trim()).filter(Boolean);\n    if (parts.length >= 3) people.push({name: cleanName(parts[0]), title: [parts[1]].concat(parts.slice(3)).join(', '), company: parts[2]});\n  }\n} else if (src.parser === 'fate') {\n  const re = /tec-session-speaker-name\">\\s*([\\s\\S]*?)\\s*<\\/div>\\s*<div class=\"tec-session-speaker-title-organization\">\\s*([\\s\\S]*?)\\s*<\\/div>/g;\n  for (const m of html.matchAll(re)) {\n    const parts = dec(m[2]).replace(/&rsquo;/g, \"'\").replace(/&[nm]dash;/g, '-').split(',').map(s => s.trim()).filter(Boolean);\n    while (parts.length > 2 && /^(inc\\.?|llc|ltd\\.?|corp\\.?|co\\.?|gmbh|plc)$/i.test(parts[parts.length - 1])) { const last = parts.pop(); parts[parts.length - 1] += ', ' + last; }\n    if (parts.length >= 2) people.push({name: cleanName(m[1]), title: parts.slice(0, -1).join(', '), company: parts[parts.length - 1]});\n  }\n} else if (src.parser === 'nrf') {\n  const re = /SpeakersList_name__\\w+\">([\\s\\S]*?)<\\/p>\\s*<p>([\\s\\S]*?)<\\/p>\\s*<p class=\"SpeakersList_company__\\w+\">([\\s\\S]*?)<\\/p>/g;\n  for (const m of html.matchAll(re)) people.push({name: cleanName(m[1]), title: dec(m[2]).replace(/&rsquo;/g, \"'\"), company: dec(m[3]).replace(/&rsquo;/g, \"'\")});\n}\n\n else if (src.parser === 'iofm') {\n  const re = /person__info--name\">\\s*<p>\\s*(?:<a [^>]*>)?\\s*([\\s\\S]*?)\\s*(?:<\\/a>)?\\s*<\\/p>\\s*<\\/div>\\s*<div class=\"person__info--company\">\\s*<p>([\\s\\S]*?)<\\/p>\\s*<\\/div>\\s*<div class=\"person__info--title\">\\s*<p>([\\s\\S]*?)<\\/p>/g;\n  for (const m of html.matchAll(re)) people.push({name: cleanName(m[1]), title: dec(m[3]), company: dec(m[2])});\n}\nconst FUNC = [\n  ['procurement', /procure|purchas|sourcing|einkauf|einkäuf|einkaeuf|beschaffung|supplier|\\bcpo\\b|\\bbuyers?\\b|category manag|indirect|\\bspend\\b/i],\n  ['supply chain', /supply\\s*(chain|officer)|\\bscm\\b|logistic|lieferkett|fulfil|warehouse|demand|planning|transport|materials?\\s+manag|inventory|trade compliance|global trade|customs/i],\n  ['finance ops', /finance|financial|accounting|payable|receivable|controll|treasury|\\bcfo\\b|shared service|business services|\\bgbs\\b|order[- ]to[- ]cash|procure[- ]to[- ]pay|\\bp2p\\b|\\bo2c\\b|\\bap\\b|\\bar\\b|credit|collections|billing|invoic|order management|\\bcash\\b/i],\n  ['operations or IT', /operations|process (manager|owner|excellence|improvement)|operating officer|information officer|\\berp\\b|\\bsap\\b|transformation|digital|\\bcoo\\b|\\bcio\\b/i]\n];\nconst NONBUYER = /investor|venture|capital|angel|founder|professor|journalist|moderator|chefvolkswirt|economist|minister|politik|referent\\b|\\bhost\\b|author|keynote/i;\nconst ACADEMIC = /universit|hochschule|fraunhofer|institut\\b|akademie|academy/i;\nconst HIGH = /\\b(chief|cpo|cfo|coo|ceo|cio|cto|president|vice president|vp|svp|evp|head|director|direktor\\w*|vorstand\\w*|leiter\\w*|leitung|bereichsleit\\w*|abteilungsleit\\w*|geschäftsführ\\w*|managing|einkaufsleiter\\w*)\\b/i;\nconst MID = /\\b(manager|lead|senior|principal|process owner|teamleit\\w*)\\b/i;\nconst VENDOR = /\\b(software|saas|ai|labs?|platform|cloud|analytics|robotics|technolog\\w*|solutions?|consult\\w*|advisory|startup|ventures?)\\b/i;\n\nconst WEDGE = /accounts?\\s*(payable|receivable)|\\bap\\b|\\bar\\b|invoic|billing|collections|credit|order[- ]to[- ]cash|procure[- ]to[- ]pay|\\bp2p\\b|\\bo2c\\b|order management|order fulfil|shared service|\\bgbs\\b|business services|purchasing|purchase|einkauf|einkäuf|procurement operations|buchhaltung|kreditoren|debitoren|rechnung|auftragsabwicklung|order processing/i;\nconst normCo = s => (s || '').toLowerCase().replace(/\\b(gmbh|ag|se|inc|ltd|llc|plc|co|kg|corp|corporation|company|group|holding|limited)\\b\\.?/g, '').replace(/[^a-z0-9]+/g, ' ').trim();\nfunction funcOf(p) {\n  if (NONBUYER.test(p.title) || ACADEMIC.test(p.company)) return null;\n  for (const [label, re] of FUNC) if (re.test(p.title)) return label;\n  return null;\n}\n// Fast-and-frugal tree. One cue per node, one exit per node, fixed order, no weighting.\n// N1 buyer function -> X | N2 vendor -> X | N3 below manager -> C | N4 process-owner title -> A\n// N5 senior with a second buyer from the same account at this event -> A | N6 technical evaluator without a champion -> C | rest -> B\nfunction tree(p, acct) {\n  const fn = funcOf(p);\n  if (!fn) return {tier: 'X', drop: true, detail: {node: 'N1', path: 'N1 buyer function: none in title, so excluded'}};\n  const seniority = HIGH.test(p.title) ? 'senior' : MID.test(p.title) ? 'manager' : 'below manager';\n  const n = (acct[normCo(p.company)] || new Set()).size;\n  const base = {function: fn, seniority, account_people: n};\n  if (VENDOR.test(p.company)) return {tier: 'X', detail: {...base, vendor: true, node: 'N2', path: 'N1 function ' + fn + ' > N2 company looks like a vendor, so X'}};\n  if (seniority === 'below manager') return {tier: 'C', detail: {...base, vendor: false, node: 'N3', role: 'influencer', path: 'N1 function ' + fn + ' > N2 not a vendor > N3 seniority below manager, so C'}};\n  if (WEDGE.test(p.title)) return {tier: 'A', detail: {...base, vendor: false, node: 'N4', role: 'champion', path: 'N1 function ' + fn + ' > N2 not a vendor > N3 ' + seniority + ' > N4 title owns the invoice, payment, order or purchasing process, so A (champion)'}};\n  if (seniority === 'senior' && n >= 2) return {tier: 'A', detail: {...base, vendor: false, node: 'N5', role: 'economic buyer', path: 'N1 function ' + fn + ' > N2 not a vendor > N3 senior > N4 no process-owner title > N5 ' + n + ' buyers from this account at the event, so A (economic buyer, account has a committee)'}};\n  if (fn === 'operations or IT') return {tier: 'C', detail: {...base, vendor: false, node: 'N6', role: 'technical evaluator', path: 'N1 function operations or IT > N2 not a vendor > N3 ' + seniority + ' > N4 no process-owner title > N5 no second buyer from this account > N6 technical evaluator without a champion, so C'}};\n  if (fn === 'supply chain' && seniority === 'manager') return {tier: 'C', detail: {...base, vendor: false, node: 'N6', role: 'influencer', path: 'N1 function supply chain > N2 not a vendor > N3 manager > N4 no process-owner title > N5 no second buyer > N6 supply chain manager, so C'}};\n  return {tier: 'B', detail: {...base, vendor: false, node: seniority === 'senior' ? 'N7' : 'N8', role: seniority === 'senior' ? 'economic buyer' : 'influencer', path: 'N1 function ' + fn + ' > N2 not a vendor > N3 ' + seniority + ' > N4 no process-owner title > N5 no second buyer > N6 not a technical evaluator, so B'}};\n}\nconst acct = {};\nfor (const p of people) { if (p.name && p.company && funcOf(p) && !VENDOR.test(p.company)) { const k = normCo(p.company); (acct[k] = acct[k] || new Set()).add(p.name.toLowerCase()); } }\n\nconst COMP_HOST = new Set(['radiance-2027']); // host sells overlapping order-to-cash software, speakers are mostly its customers\nconst seen = new Set();\nconst rows = [];\nconst tiers = {A: 0, B: 0, C: 0, X: 0};\nlet dropped = 0, noCompany = 0;\nfor (const p of people) {\n  if (!p.name || !p.company) { noCompany++; continue; }\n  const key = (p.name + '|' + p.company).toLowerCase();\n  if (seen.has(key)) continue;\n  seen.add(key);\n  const r = tree(p, acct);\n  if (COMP_HOST.has(src.slug)) { if (r.tier === 'A') { r.tier = 'B'; r.detail = {...r.detail, competitor_host: true, node: 'N2b', path: r.detail.path + ' > N2b event host sells overlapping order-to-cash software, so the speaker is likely its customer, capped at B'}; } else { r.detail = {...r.detail, competitor_host: true}; } }\n  if (r.drop) { dropped++; continue; }\n  tiers[r.tier]++;\n  rows.push({event_slug: src.slug, full_name: p.name, title: p.title, company: p.company, source_url: src.url,\n    source_kind: src.kind || (src.parser === 'handelsblatt' ? 'speaker (2026 edition)' : 'speaker'), tier: r.tier, score_detail: r.detail});\n}\nconst error = seen.size === 0 ? 'zero_people_parsed (page layout changed, blocked, or empty)' : (rows.length === 0 ? 'all_people_filtered_by_tree' : null);\nreturn {json: {slug: src.slug, url: src.url, node: 'Parse', parser: src.parser, found: seen.size, dropped_by_tree: dropped, skipped_no_company: noCompany, tiers, error, rows}};"
+      },
+      "id": "372f802f-fd46-460d-a553-1681916418ec",
+      "name": "Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        992,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2cf66a1c-9eb1-4fde-89f7-e2d16099e468",
+              "leftValue": "={{ $json.rows.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f5bde29f-afc9-445e-b89c-70aa319a1094",
+      "name": "Has rows?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1216,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.sb }}/rest/v1/rpc/ingest_leads",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $('Config').first().json.tok, p_rows: $json.rows}) }}",
+        "options": {}
+      },
+      "id": "2774334a-4bd6-43a2-82ac-da3aed36bc2d",
+      "name": "Ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        -144
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.sb }}/rest/v1/rpc/log_dlq",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $('Config').first().json.tok, p_workflow: 'sourcing', p_node: $json.node || 'Ingest', p_payload: {slug: $json.slug || null, url: $json.url || null}, p_error: String(($json.error && ($json.error.message || $json.error)) || $json.reason || 'unknown').slice(0, 500), p_retries: 0}) }}",
+        "options": {}
+      },
+      "id": "3de75213-96c8-4acd-b93c-69c8d37a4c8f",
+      "name": "Log to DLQ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        176
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual run": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekly 06:00": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Events": {
+      "main": [
+        [
+          {
+            "node": "Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan": {
+      "main": [
+        [
+          {
+            "node": "Robots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Robots": {
+      "main": [
+        [
+          {
+            "node": "Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate": {
+      "main": [
+        [
+          {
+            "node": "Allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Allowed?": {
+      "main": [
+        [
+          {
+            "node": "Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log to DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Page": {
+      "main": [
+        [
+          {
+            "node": "Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse": {
+      "main": [
+        [
+          {
+            "node": "Has rows?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has rows?": {
+      "main": [
+        [
+          {
+            "node": "Ingest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log to DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Log to DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "tags": []
+}

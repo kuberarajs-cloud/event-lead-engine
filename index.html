@@ -1,0 +1,583 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GTM Event Lead Engine: Review Cockpit</title>
+<style>
+:root{
+  --bg:#f6f7f9; --panel:#ffffff; --ink:#14181f; --muted:#5d6675; --line:#e2e5ea;
+  --accent:#1f5fff; --accent-ink:#ffffff; --ok:#12805c; --okbg:#e3f5ee; --bad:#b42318; --badbg:#fdeceb;
+  --warn:#8a5a00; --warnbg:#fff3d6; --chip:#eef1f6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0e1116; --panel:#171b22; --ink:#e8ebf0; --muted:#98a2b3; --line:#262c36;
+    --accent:#6b93ff; --accent-ink:#0b0f16; --ok:#4cc29a; --okbg:#10291f; --bad:#ff8a80; --badbg:#2f1513;
+    --warn:#f0c168; --warnbg:#2c2410; --chip:#222834;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0e1116; --panel:#171b22; --ink:#e8ebf0; --muted:#98a2b3; --line:#262c36;
+  --accent:#6b93ff; --accent-ink:#0b0f16; --ok:#4cc29a; --okbg:#10291f; --bad:#ff8a80; --badbg:#2f1513;
+  --warn:#f0c168; --warnbg:#2c2410; --chip:#222834;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent)}
+.wrap{max-width:1100px;margin:0 auto;padding:0 16px}
+header{background:var(--panel);border-bottom:1px solid var(--line)}
+.top{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:14px 0}
+h1{font-size:18px;margin:0;letter-spacing:.2px}
+.sub{color:var(--muted);font-size:13px}
+.conn{display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.dot.on{background:var(--ok)} .dot.off{background:var(--bad)}
+.auth{display:flex;gap:6px;align-items:center}
+input,select,textarea,button{font:inherit;color:inherit}
+input,select,textarea{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 12px}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.good{background:var(--ok);color:#fff;border-color:var(--ok)}
+button.badbtn{color:var(--bad);border-color:var(--bad)}
+button:disabled{opacity:.5;cursor:not-allowed}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tab{border:0;border-bottom:3px solid transparent;border-radius:0;background:none;padding:10px 12px;color:var(--muted)}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+main{padding:18px 0 60px}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.bar .grow{flex:1}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
+.card.focus{box-shadow:0 0 0 2px #3b82f6}
+kbd{font:600 11px/1 ui-monospace,Menlo,monospace;padding:2px 5px;border:1px solid var(--line);border-radius:4px;background:var(--panel)}
+.row{display:flex;gap:12px;justify-content:space-between;align-items:flex-start;flex-wrap:wrap}
+.name{font-weight:650}
+.meta{color:var(--muted);font-size:13px}
+.chip{display:inline-block;background:var(--chip);border-radius:999px;padding:2px 9px;font-size:12px;margin:2px 4px 2px 0}
+.tier{font-weight:700;border-radius:6px;padding:2px 8px;font-size:12px}
+.tier.A{background:var(--okbg);color:var(--ok)} .tier.B{background:var(--warnbg);color:var(--warn)}
+.tier.C{background:var(--chip);color:var(--muted)} .tier.X{background:var(--badbg);color:var(--bad)}
+.st{font-size:12px;border-radius:6px;padding:2px 8px}
+.st.pending{background:var(--chip);color:var(--muted)} .st.approved{background:var(--okbg);color:var(--ok)} .st.rejected{background:var(--badbg);color:var(--bad)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+.reject-panel{margin-top:10px;display:grid;gap:8px;grid-template-columns:1fr 1fr auto;align-items:center}
+@media (max-width:640px){.reject-panel{grid-template-columns:1fr}}
+.why{font-size:12.5px;color:var(--muted);margin-top:6px}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;font-size:12px;margin:8px 0 0}
+details summary{cursor:pointer;color:var(--accent);font-size:13px;margin-top:8px}
+.grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(170px,1fr))}
+.kpi{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.kpi b{display:block;font-size:24px}
+.kpi span{color:var(--muted);font-size:12.5px}
+.kpi.warn{border-color:var(--warn)} .kpi.alert{border-color:var(--bad)}
+.kpi.dim{opacity:.75;border-style:dashed}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;color:var(--muted);font-weight:600}
+.scorebars{display:flex;gap:3px;align-items:flex-end;height:26px}
+.scorebars i{display:block;width:10px;background:var(--accent);border-radius:2px 2px 0 0;opacity:.85}
+.big{font-size:20px;font-weight:700}
+.empty{text-align:center;color:var(--muted);padding:34px 10px}
+.note{background:var(--warnbg);color:var(--warn);border-radius:8px;padding:8px 10px;font-size:13px;margin-bottom:12px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:9px 14px;border-radius:10px;font-size:14px;max-width:90vw;z-index:9;display:none}
+.flow{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:8px 0 14px}
+.flow span{background:var(--chip);border-radius:8px;padding:6px 10px;font-size:13px}
+.flow em{color:var(--muted);font-style:normal}
+.flow span.plan{background:transparent;border:1px dashed var(--muted);color:var(--muted)}
+.state-built{color:var(--good,#4ade80)} .state-plan{color:var(--muted)}
+h2{font-size:16px;margin:18px 0 8px}
+ul{margin:6px 0 10px;padding-left:20px}
+li{margin:3px 0}
+</style>
+<style id="gm-theme">
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* Theme override. Visual only: no markup or logic changes.
+   Black is reserved for Approve, the active tab and the focused lead card. */
+:root, :root:not([data-theme="light"]), :root[data-theme="dark"]{
+  color-scheme: light;
+  --gm-brand:#030712; --gm-brand-ink:#ffffff; --gm-brand-hover:#1f2937;
+  --bg:#f8fafc; --panel:#ffffff; --ink:#030712; --muted:#4b5563; --line:#e2e8f0; --line-strong:#cbd5e1;
+  --accent:#374151; --accent-ink:#ffffff;
+  --ok:#15803d; --okbg:#dcfce7; --bad:#b91c1c; --badbg:#fef2f2;
+  --warn:#92400e; --warnbg:#fef3c7; --chip:#f1f5f9;
+}
+html,body{font-family:"Inter","Die Grotesk C",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px;font-feature-settings:"tnum" 1;-webkit-font-smoothing:antialiased}
+h1{font-weight:600;letter-spacing:-.01em}
+a{color:var(--ink);text-decoration:underline;text-underline-offset:2px;text-decoration-color:#94a3b8}
+a:hover{text-decoration-color:var(--ink)}
+details summary{color:var(--ink)}
+:focus-visible{outline:2px solid var(--gm-brand);outline-offset:2px}
+
+/* Buttons: large, consistent hit targets (Fitts's law) */
+button{min-height:36px;padding:0 14px;border-radius:8px;border-color:var(--line-strong);font-weight:500}
+button:hover{border-color:#94a3b8}
+button.primary{background:var(--panel);color:var(--ink);border-color:var(--line-strong)}
+button:disabled{opacity:.4}
+.actions{gap:10px}
+
+/* Approve: the one brand-black action */
+button.good[data-act="approve"]{min-height:40px;min-width:136px;padding:0 20px;border-radius:999px;background:var(--gm-brand);border-color:var(--gm-brand);color:var(--gm-brand-ink);font-weight:600}
+button.good[data-act="approve"]:hover:not(:disabled){background:var(--gm-brand-hover);border-color:var(--gm-brand-hover)}
+button.good[data-act="approve"]::after{content:"Shift+A";margin-left:10px;font:500 11px/1 ui-monospace,Menlo,monospace;opacity:.65}
+
+/* Reject: muted slate at rest, dim red only on hover and on the confirm step */
+button.badbtn{min-height:40px;min-width:116px;padding:0 18px;border-radius:999px;background:var(--panel);border-color:var(--line-strong);color:#475569;font-weight:500}
+button.badbtn:hover:not(:disabled){background:var(--badbg);border-color:#fecaca;color:var(--bad)}
+button.badbtn[data-act="rejectopen"]::after{content:"Shift+R";margin-left:10px;font:500 11px/1 ui-monospace,Menlo,monospace;opacity:.65}
+button.badbtn[data-act="rejectgo"]{color:var(--bad);border-color:#fecaca}
+
+/* Tabs: brand black marks the active tab only */
+.tab{min-height:44px;padding:0 14px;color:var(--muted);font-weight:500}
+.tab:hover{color:var(--ink);border-color:transparent}
+.tab[aria-selected="true"]{color:var(--gm-brand);border-bottom-color:var(--gm-brand);font-weight:600}
+
+/* Lead cards: flat panels, brand black marks the focused card only */
+.card{border-radius:10px;box-shadow:none}
+.card.focus{border-color:var(--gm-brand);box-shadow:0 0 0 1px var(--gm-brand)}
+
+/* Dense, high-contrast data styling */
+main.wrap{padding-top:16px;padding-bottom:60px}
+input,select,textarea{min-height:36px;background:var(--panel);border-color:var(--line-strong)}
+.chip{background:var(--chip);color:#334155}
+.st.pending{color:#475569}
+th{color:#475569;text-transform:uppercase;letter-spacing:.04em;font-size:11px}
+.scorebars i{background:#475569}
+.state-built{color:var(--ok)}
+.note{border:1px solid #fde68a}
+kbd{background:var(--bg)}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1>GTM Event Lead Engine: Review Cockpit</h1>
+        <div class="sub">Leads from public event pages, scored and held for review. Nothing is sent to anyone from here.</div>
+      </div>
+      <div class="auth">
+        <span class="conn"><i class="dot" id="dot"></i><span id="connText">connecting</span></span>
+        <input id="tok" type="password" placeholder="Review passcode" autocomplete="off" size="14" aria-label="Review passcode">
+        <button id="unlock" class="primary">Unlock</button>
+      </div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" data-tab="leads" aria-selected="true">Review queue</button>
+      <button class="tab" role="tab" data-tab="events" aria-selected="false">Events</button>
+      <button class="tab" role="tab" data-tab="health" aria-selected="false">Health and metrics</button>
+      <button class="tab" role="tab" data-tab="system" aria-selected="false">How it works</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section id="tab-leads">
+    <div class="bar">
+      <select id="fEvent" aria-label="Event"></select>
+      <select id="fMarket" aria-label="Market"><option value="">All markets</option><option>US</option><option>UK</option><option>DE</option></select>
+      <select id="fTier" aria-label="Tier"><option value="">All tiers</option><option>A</option><option>B</option><option>C</option><option>X</option></select>
+      <select id="fStatus" aria-label="Status"><option value="">All statuses</option><option value="pending" selected>Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>
+      <span class="grow"></span>
+      <span class="meta" id="count"></span>
+      <button id="refresh">Refresh</button>
+    </div>
+    <div class="note" id="lockNote">Read-only. Names, companies and contact data are hidden. Enter the review passcode to see them and to approve or reject.</div>
+    <div class="meta" id="keyHint" style="margin:0 0 8px">Keys: <kbd>j</kbd> next, <kbd>k</kbd> previous, <kbd>o</kbd> open source, <kbd>Shift</kbd>+<kbd>A</kbd> approve, <kbd>Shift</kbd>+<kbd>R</kbd> reject, <kbd>Enter</kbd> confirm reject, <kbd>Esc</kbd> cancel. Approve needs Shift so a stray key cannot start enrichment.</div>
+    <div id="leadList"></div>
+  </section>
+
+  <section id="tab-events" hidden>
+    <div class="grid" id="slotKpis" style="margin-bottom:12px"></div>
+    <div class="card" style="overflow:auto">
+      <table>
+        <thead><tr><th>Event</th><th>Market</th><th>Date and city</th><th>Score</th><th>Breakdown</th><th>Status</th><th>Pool</th></tr></thead>
+        <tbody id="eventRows"></tbody>
+      </table>
+    </div>
+    <p class="meta">Score out of 50: buyer density x3, ICP match x3, lead data access x2, timing x1, cost x1. Each factor is 0 to 5. Bars show buyer, ICP, lead data, timing, cost in that order.</p>
+  </section>
+
+  <section id="tab-health" hidden>
+    <div class="grid" id="kpis"></div>
+    <h2>Review quality</h2>
+    <div class="card" id="quality"></div>
+    <h2>By event</h2>
+    <div class="card" style="overflow:auto"><table><thead><tr><th>Event</th><th>Pending</th><th>Approved</th><th>Rejected</th><th>Total</th></tr></thead><tbody id="statRows"></tbody></table></div>
+    <h2>Not live yet</h2>
+    <div class="grid">
+      <div class="kpi dim"><b>No data</b><span>Reply rate. The receiving webhook is built. Nothing has been sent.</span></div>
+      <div class="kpi dim"><b>No data</b><span>Bounce and spam placement. Starts with the first send.</span></div>
+      <div class="kpi dim"><b>No data</b><span>Meetings booked per event. Needs HubSpot.</span></div>
+    </div>
+  </section>
+
+  <section id="tab-system" hidden>
+    <h2>Flow</h2>
+    <p class="meta">Review comes first. Nothing after approval runs for a lead that a person has not approved. Dashed boxes are planned and not built.</p>
+    <div class="flow">
+      <span>Public event pages</span><em>&rarr;</em><span>n8n reads and scores</span><em>&rarr;</em><span>Supabase (EU)</span><em>&rarr;</em><span>This cockpit</span><em>&rarr;</em><span><b>You approve</b></span>
+    </div>
+    <div class="flow">
+      <span>Credit triage (ESI)</span><em>&rarr;</em><span>Apollo company lookup</span><em>&rarr;</em><span>Hiring scan (tier A)</span><em>&rarr;</em><span>Clay row</span><em>&rarr;</em><span>HubSpot payload (dry run)</span>
+    </div>
+    <div class="flow">
+      <span>Clay email waterfall (UK and US)</span><em>&rarr;</em><span>n8n: Hunter verify, then save</span><em>&rarr;</em><span class="plan">Apollo people match and Cognism (planned)</span><em>&rarr;</em><span class="plan">Send with Smartlead or Instantly</span><em>&rarr;</em><span>Results webhook (built, empty)</span><em>&rarr;</em><span>Tuning proposals</span>
+    </div>
+    <div class="card" style="overflow:auto">
+      <b>Steps after approval</b>
+      <table>
+        <thead><tr><th>Step</th><th>What it does</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td>1. Credit triage (ESI)</td><td>Sets a level from the tier. Tier A is level 3, tier B level 4, tier C level 5. Level 5 spends nothing. A hiring signal lifts tier A to level 2.</td><td class="state-built">Built</td></tr>
+          <tr><td>2. Apollo company lookup</td><td>Finds the company domain, size and industry. The free plan gives company data only, with no email or phone.</td><td class="state-built">Built</td></tr>
+          <tr><td>3. Hiring scan</td><td>For tier A, counts open roles in finance, procurement and ERP. A hit is an early signal.</td><td class="state-built">Built</td></tr>
+          <tr><td>4. Clay row</td><td>Sends the lead, the research note, the opener and the channel rule to the Clay table.</td><td class="state-built">Built</td></tr>
+          <tr><td>5. HubSpot payload</td><td>Builds the company and contact records with their keys and stores them on the lead. It is never sent.</td><td class="state-built">Built, dry run</td></tr>
+          <tr><td>6. Contact email</td><td>Clay's Work Email waterfall finds the address from name and company domain. It tries 11 providers in order and stops at the first hit. It runs on its own for UK and US leads only, because Germany gets a LinkedIn note first, and it is skipped at level 5. Clay then posts the address to n8n, Hunter verifies it, and it is saved to the database. The address is never shown in the cockpit.</td><td class="state-built">Built, run on one real lead</td></tr>
+          <tr><td>6b. Paid add-ons</td><td>Apollo people match and Cognism go in front of the Clay waterfall, with a cap of 15 credits per account at levels 2 and 3. Apollo people match needs a paid Apollo plan, and Cognism has no self-serve account.</td><td class="state-plan">Planned, needs paid access</td></tr>
+          <tr><td>7. Send</td><td>Smartlead or Instantly on separate sending domains, with the channel set by market.</td><td class="state-plan">Planned</td></tr>
+          <tr><td>8. Results webhook</td><td>Receives sends, replies, bounces and unsubscribes into Postgres. Two views propose changes to the scoring tree.</td><td class="state-built">Built, tested with fake events</td></tr>
+        </tbody>
+      </table>
+      <p class="meta">Three leads are approved so far. Steps 1 to 5 ran end to end on real leads, and step 6 has run on one real lead. No lead has reached step 7.</p>
+    </div>
+    <div class="card">
+      <b>Rules built into the system</b>
+      <ul>
+        <li>Only speaker, sponsor and exhibitor pages that organisers publish. No logins, no attendee databases, no LinkedIn scraping.</li>
+        <li>Personal data is hidden until a reviewer enters the passcode. Without it the public view shows initials and role level only. Company, contact data, enrichment and the HubSpot payload are not sent to the browser. Before approval a lead holds only name, title, company and source link.</li>
+        <li>Enrichment and the HubSpot payload start only after approval. The payload is never sent from this build. The note and opener are templates for now, and an LLM step plugs into the same place. Nothing is sent to anyone.</li>
+        <li>Every review is written to an audit log with the reviewer's name. Failed steps go to a dead-letter queue and show on the Health tab.</li>
+        <li>Sales Navigator is a manual link per lead. Nothing scrapes it.</li>
+        <li>Outreach is out of scope for this build. Germany: no cold email, a LinkedIn note from a person first, and no call until a concrete topical reason is recorded (UWG section 7). UK: checked against PECR and TPS. US: CAN-SPAM.</li>
+      </ul>
+      <b>Scoring a lead</b>
+      <p class="meta">A fast-and-frugal tree with named exits. A lead with no buyer function or from a vendor is dropped. Below manager is tier C. A title that owns the invoice, payment, order or purchasing process (AP, AR, billing, order management, shared services, purchasing) is tier A as the champion. A senior person with a second named buyer at the same event is tier A as the economic buyer. The rest are tier B or C. Leads from an event hosted by a competitor, today Radiance, are capped at tier B and flagged. Each card shows the path taken, so you can overrule it.</p>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="config.js"></script>
+<script>
+const SB = window.COCKPIT_CONFIG.supabaseUrl;
+const KEY = window.COCKPIT_CONFIG.supabasePublishableKey;
+const H = {apikey: KEY, Authorization: 'Bearer ' + KEY, 'Content-Type': 'application/json'};
+const $ = s => document.querySelector(s);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '#';
+const NIL = '00000000-0000-0000-0000-000000000000';
+const REASONS = ['Wrong function','Vendor or competitor','Too junior','Wrong market','Already known','Other'];
+const TARGET = {US: 5, UK: 3, DE: 2};
+const state = {events: [], leads: [], stats: [], health: null, reasons: [], token: '', unlocked: false, rejecting: null};
+
+try { state.token = localStorage.getItem('gm_review_token') || ''; } catch (e) {}
+
+async function get(path) {
+  const r = await fetch(SB + '/rest/v1/' + path, {headers: H});
+  if (!r.ok) throw new Error(path.split('?')[0] + ' ' + r.status);
+  return r.json();
+}
+async function rpc(name, body) {
+  const r = await fetch(SB + '/rest/v1/rpc/' + name, {method: 'POST', headers: H, body: JSON.stringify(body)});
+  const t = await r.text();
+  if (!r.ok) { let m = t; try { m = JSON.parse(t).message; } catch (e) {} throw new Error(m); }
+  return t ? JSON.parse(t) : null;
+}
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.style.display = 'none', 3500);
+}
+function setConn(ok, msg) {
+  $('#dot').className = 'dot ' + (ok ? 'on' : 'off');
+  $('#connText').textContent = ok ? 'live' : ('offline' + (msg ? ': ' + msg : ''));
+}
+function ago(ts) {
+  if (!ts) return 'never';
+  const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000);
+  if (s < 90) return 'just now';
+  if (s < 5400) return Math.round(s / 60) + ' min ago';
+  if (s < 129600) return Math.round(s / 3600) + ' h ago';
+  return Math.round(s / 86400) + ' d ago';
+}
+
+async function loadLeads() {
+  if (state.unlocked && state.token) {
+    try { return await rpc('review_queue', {p_token: state.token, p_status: null, p_limit: 1000}); }
+    catch (e) { state.token = ''; state.unlocked = false; try { localStorage.removeItem('gm_review_token'); } catch (x) {} syncAuthUi(); toast('Passcode no longer valid. Names hidden.'); }
+  }
+  return get('leads_review?select=*&order=created_at.desc&limit=1000');
+}
+async function load() {
+  try {
+    const [events, leads, stats, health, reasons] = await Promise.all([
+      get('events_public?select=*&order=score.desc'),
+      loadLeads(),
+      get('review_stats?select=*'),
+      get('pipeline_health?select=*'),
+      get('reject_reasons?select=*')
+    ]);
+    Object.assign(state, {events, leads, stats, health: health[0] || null, reasons});
+    setConn(true);
+    if (state.rejecting) { renderEvents(); renderHealth(); return; }
+    render();
+  } catch (e) { setConn(false, e.message); }
+}
+
+/* ---------- auth ---------- */
+async function unlock(tok) {
+  try {
+    await rpc('review_lead', {p_token: tok, p_lead: NIL, p_decision: 'pending'});
+  } catch (e) {
+    if (e.message === 'lead not found') {
+      state.token = tok; state.unlocked = true;
+      try { localStorage.setItem('gm_review_token', tok); } catch (x) {}
+      $('#tok').value = ''; syncAuthUi();
+      toast('Review mode on'); await load(); return;
+    }
+    state.unlocked = false; toast('Wrong passcode'); return;
+  }
+}
+function syncAuthUi() {
+  $('#tok').style.display = state.unlocked ? 'none' : '';
+  $('#unlock').textContent = state.unlocked ? 'Lock' : 'Unlock';
+}
+async function lock() {
+  state.token = ''; state.unlocked = false;
+  try { localStorage.removeItem('gm_review_token'); } catch (e) {}
+  syncAuthUi(); await load();
+}
+$('#unlock').onclick = () => state.unlocked ? lock() : unlock($('#tok').value.trim());
+$('#tok').addEventListener('keydown', e => { if (e.key === 'Enter') $('#unlock').click(); });
+
+/* ---------- render ---------- */
+function render() {
+  $('#lockNote').style.display = state.unlocked ? 'none' : '';
+  renderFilters(); renderLeads(); renderEvents(); renderHealth();
+}
+function renderFilters() {
+  const sel = $('#fEvent'), cur = sel.value;
+  const opts = state.events.filter(e => e.pool_state !== 'excluded')
+    .map(e => `<option value="${esc(e.slug)}">${esc(e.name)}</option>`).join('');
+  sel.innerHTML = '<option value="">All events</option>' + opts; sel.value = cur;
+}
+function leadMatch(l) {
+  const ev = $('#fEvent').value, mk = $('#fMarket').value, ti = $('#fTier').value, st = $('#fStatus').value;
+  return (!ev || l.event_slug === ev) && (!mk || l.market === mk) && (!ti || l.tier === ti) && (!st || l.status === st);
+}
+function cues(l) {
+  const d = l.score_detail || {};
+  const bits = [];
+  if (d.function) bits.push('function: ' + d.function);
+  if (d.seniority) bits.push('seniority: ' + d.seniority);
+  if (d.vendor != null) bits.push(d.vendor ? 'vendor' : 'not a vendor');
+  if (d.role) bits.push('committee role: ' + d.role);
+  if (d.competitor_host) bits.push('host sells overlapping software, likely its customer');
+  return bits.map(b => `<span class="chip">${esc(b)}</span>`).join('');
+}
+function salesNavLink(l) {
+  const kw = [l.title, l.company].filter(Boolean).join(' ');
+  return 'https://www.linkedin.com/sales/search/people?query=(keywords%3A' + encodeURIComponent(kw) + ')';
+}
+function enrichSteps(E, l) {
+  const rows = [];
+  if (E.esi) rows.push(['Credit triage', 'ESI level ' + E.esi.level + ' (' + E.esi.label + '). ' + (E.esi.upgraded_by ? 'Raised because the ' + E.esi.upgraded_by + '. ' : '') + 'At most ' + E.esi.apollo_calls_max + ' Apollo calls.']);
+  const a = E.apollo;
+  if (a) rows.push(['Apollo company lookup', a.status === 'ok' ? [a.company, a.domain, a.employees ? a.employees + ' employees' : null].filter(Boolean).join(', ') + ' (' + a.match + ' match)' : (a.reason || a.status)]);
+  const h = a && a.hiring;
+  if (h) rows.push(['Hiring scan', h.status === 'ok' ? h.open_postings + ' open roles, and ' + h.relevant_in_scan + ' of the first ' + h.scanned + ' are in finance, procurement or ERP' : (h.reason || h.status)]);
+  rows.push(['Clay row', l.clay_url ? 'sent to the Clay table' : ((E.clay && E.clay.reason) || 'not sent')]);
+  const cs = l.contact_email_status;
+  rows.push(['Contact email', cs ? 'found by ' + (l.contact_email_source === 'clay' ? 'the Clay email waterfall' : (l.contact_email_source || 'a provider')) + ' and checked by Hunter. Status: ' + cs + '. The address is stored in the database and is not shown here.' : (l.market === 'DE' ? 'not looked up. Germany gets a LinkedIn note first, and cold email is not allowed.' : (E.esi && E.esi.level === 5 ? 'not looked up. This level spends no credits.' : 'not found yet'))]);
+  if (E.esi && E.esi.waterfall) rows.push(['Full waterfall plan', E.esi.waterfall.steps.map(x => x.provider).join(', then ') + '. Cap ' + E.esi.waterfall.credit_cap + ' credits. Running today: the Clay email waterfall, then Hunter verify, for UK and US leads only.']);
+  return rows.map(r => `<div class="why"><b>${esc(r[0])}.</b> ${esc(r[1])}</div>`).join('');
+}
+function leadCard(l) {
+  const can = state.unlocked;
+  const rej = state.rejecting === l.id;
+  let acts = '';
+  if (l.status === 'pending') {
+    acts = `<button class="good" data-act="approve" data-id="${esc(l.id)}" ${can ? '' : 'disabled'}>Approve</button>
+            <button class="badbtn" data-act="rejectopen" data-id="${esc(l.id)}" ${can ? '' : 'disabled'}>Reject</button>`;
+  } else {
+    acts = `<button data-act="reset" data-id="${esc(l.id)}" ${can ? '' : 'disabled'}>Back to pending</button>`;
+  }
+  const rejPanel = rej ? `<div class="reject-panel">
+      <select data-r="reason">${REASONS.map(r => `<option>${esc(r)}</option>`).join('')}</select>
+      <input data-r="note" placeholder="Short note (optional)">
+      <span><button class="badbtn" data-act="rejectgo" data-id="${esc(l.id)}">Confirm reject</button> <button data-act="rejectcancel">Cancel</button></span>
+    </div>` : '';
+  const hp = l.hubspot_payload ? `<details><summary>HubSpot payload (dry run, never sent)</summary><pre>${esc(JSON.stringify(l.hubspot_payload, null, 2))}</pre></details>` : '';
+  const E = l.enrichment;
+  const en2 = E ? `<details open><summary>Draft for review (${esc(E.draft_kind || 'draft')}, never sent)</summary>
+      ${enrichSteps(E, l)}
+      <div class="why"><b>Research note.</b> ${esc(E.research_note)}</div>
+      <div class="why"><b>Opener (${esc(E.language || 'en')}).</b> ${esc(E.opener)}</div>
+      <div class="why"><b>Contact rule for this market.</b> ${esc(E.channel_rule)}</div>
+      ${E.sap_pain ? `<div class="why"><b>SAP angle (hypothesis from the role, unverified).</b> ${esc(E.sap_pain.process)}: ${esc(E.sap_pain.hypothesis)} T-codes: ${esc((E.sap_pain.tcodes || []).join(', '))}.</div>` : ''}
+      ${E.call_basis && E.call_basis.required ? `<div class="why"><b>Call basis (Germany).</b> ${esc(E.call_basis.status)}. ${esc(E.call_basis.hint || '')}</div>` : ''}</details>` : '';
+  const reason = l.status === 'rejected' && l.reject_reason ? `<div class="why">Reason: ${esc(l.reject_reason)}</div>` : '';
+  const enr = l.status === 'approved' ? `<span class="chip">${l.enriched ? 'enriched' : 'waiting for enrichment'}</span>` : '';
+  const clay = l.clay_url ? `<a href="${esc(safeUrl(l.clay_url))}" target="_blank" rel="noopener">Clay table</a>` : '<span class="meta">Clay table: after approval</span>';
+  return `<div class="card${state.focusId === l.id ? ' focus' : ''}" data-lead="${esc(l.id)}">
+    <div class="row">
+      <div>
+        <div class="name">${esc(l.display_name)} <span class="tier ${esc(l.tier)}">Tier ${esc(l.tier)}</span> <span class="st ${esc(l.status)}">${esc(l.status)}</span></div>
+        <div>${esc(l.title || 'Role not listed')} at <b>${esc(l.company)}</b></div>
+        <div class="meta">${esc(l.event_name)} &middot; ${esc(l.market)} &middot; ${esc(l.source_kind)}</div>
+      </div>
+      <div class="meta" style="text-align:right">${enr}</div>
+    </div>
+    <div style="margin-top:6px">${cues(l)}</div>
+    ${(l.score_detail && l.score_detail.path) ? `<div class="why">Why this tier: ${esc(l.score_detail.path)}</div>` : ''}
+    <div class="why">Data source: ${esc(l.data_lineage || 'Not recorded')} Collected ${esc(String(l.created_at || '').slice(0, 10))}.</div>
+    ${reason}
+    <div class="actions">
+      <a href="${esc(safeUrl(l.source_url))}" target="_blank" rel="noopener" data-src="${esc(l.id)}">Open source page</a>
+      ${can ? `<a href="${esc(salesNavLink(l))}" target="_blank" rel="noopener">Find in Sales Navigator (manual)</a>` : ''}
+      ${clay}
+      <span style="flex:1"></span>${acts}
+    </div>
+    ${rejPanel}${en2}${hp}
+  </div>`;
+}
+function renderLeads() {
+  const order = {A: 0, B: 1, C: 2, X: 3};
+  const rows = state.leads.filter(leadMatch).sort((a, b) => (order[a.tier] - order[b.tier]) || (new Date(b.created_at) - new Date(a.created_at)));
+  state.visible = rows.slice(0, 200).map(l => l.id);
+  if (!state.visible.includes(state.focusId)) state.focusId = state.visible[0] || null;
+  $('#count').textContent = rows.length + ' of ' + state.leads.length + ' leads';
+  if (!state.leads.length) {
+    const last = state.health && state.health.last_ingest_at;
+    $('#leadList').innerHTML = `<div class="card empty">No leads yet. The sourcing flow in n8n fills this queue.<br>Last ingest: ${esc(ago(last))}.</div>`;
+    return;
+  }
+  $('#leadList').innerHTML = rows.length ? rows.slice(0, 200).map(leadCard).join('') : '<div class="card empty">No leads match these filters.</div>';
+}
+function renderEvents() {
+  const top = state.events.filter(e => e.pool_state === 'top10');
+  const by = {US: 0, UK: 0, DE: 0}; top.forEach(e => by[e.market]++);
+  $('#slotKpis').innerHTML =
+    `<div class="kpi ${top.length === 10 ? '' : 'warn'}"><b>${top.length} / 10</b><span>events in the top 10</span></div>` +
+    ['US', 'UK', 'DE'].map(m => `<div class="kpi"><b>${by[m]}</b><span>${m} (target ${TARGET[m]})</span></div>`).join('');
+  const stateSel = e => state.unlocked
+    ? `<select data-ev="${esc(e.id)}">${['top10', 'alternate', 'excluded'].map(s => `<option value="${s}" ${s === e.pool_state ? 'selected' : ''}>${s}</option>`).join('')}</select>`
+    : `<span class="chip">${esc(e.pool_state)}</span>`;
+  $('#eventRows').innerHTML = state.events.map(e => {
+    const bars = [e.s_buyer, e.s_icp, e.s_lead, e.s_timing, e.s_cost].map(v => `<i style="height:${Math.max(2, (v || 0) * 5)}px" title="${v}"></i>`).join('');
+    const links = [['Event page', e.official_url], ['Speakers', e.speakers_url], ['Sponsors', e.sponsors_url]]
+      .filter(x => x[1]).map(x => `<a href="${esc(safeUrl(x[1]))}" target="_blank" rel="noopener">${x[0]}</a>`).join(' &middot; ');
+    return `<tr>
+      <td><b>${esc(e.name)}</b><div class="meta">${links}</div><div class="meta">${esc(e.notes)}</div>${e.source_status ? `<div class="meta"><b>Lead source:</b> ${esc(e.source_status)}</div>` : ''}</td>
+      <td>${esc(e.market)}</td>
+      <td>${esc(e.date_label)}<div class="meta">${esc(e.city)}</div></td>
+      <td class="big">${esc(e.score)}</td>
+      <td><div class="scorebars">${bars}</div></td>
+      <td><span class="chip">${esc(e.verification)}</span><div class="meta">List: ${esc(e.list_public)}</div></td>
+      <td>${stateSel(e)}</td></tr>`;
+  }).join('');
+}
+function renderHealth() {
+  const h = state.health;
+  if (!h) { $('#kpis').innerHTML = ''; return; }
+  const reviewed = Number(h.approved) + Number(h.rejected);
+  const rate = reviewed ? Math.round(100 * h.approved / reviewed) + '%' : 'n/a';
+  const k = (v, label, cls) => `<div class="kpi ${cls || ''}"><b>${esc(v)}</b><span>${esc(label)}</span></div>`;
+  $('#kpis').innerHTML =
+    k(h.leads_total, 'leads sourced') + k(h.pending, 'pending review') + k(h.approved, 'approved') + k(h.rejected, 'rejected') +
+    k(rate, 'approval rate') +
+    k(h.approved_waiting, 'approved, waiting for enrichment', h.approved_waiting > 0 ? 'warn' : '') +
+    k(h.dlq_open, 'failed steps in dead-letter queue', h.dlq_open > 0 ? 'alert' : '') +
+    k(ago(h.last_ingest_at), 'last ingest') + k(ago(h.last_review_at), 'last review');
+  const unchecked = Number(h.approved_without_source_check);
+  const rr = state.reasons.length
+    ? '<ul>' + state.reasons.sort((a, b) => b.n - a.n).map(r => `<li>${esc(r.reason)}: ${esc(r.n)}</li>`).join('') + '</ul>'
+    : '<span class="meta">No rejections yet.</span>';
+  $('#quality').innerHTML =
+    `<div><b>Approvals without opening the source page:</b> ${unchecked} of ${h.approved}</div>
+     <div class="meta">A high number means reviewers are trusting the score instead of checking it.</div>
+     <div style="margin-top:10px"><b>Reject reasons</b></div>${rr}`;
+  $('#statRows').innerHTML = state.stats.sort((a, b) => b.total - a.total).map(s =>
+    `<tr><td>${esc(s.name)} <span class="meta">${esc(s.market)} &middot; ${esc(s.pool_state)}</span></td><td>${esc(s.pending)}</td><td>${esc(s.approved)}</td><td>${esc(s.rejected)}</td><td>${esc(s.total)}</td></tr>`).join('');
+}
+
+/* ---------- actions ---------- */
+async function review(id, decision, reason) {
+  try {
+    const v = state.visible || [], i = v.indexOf(id);
+    await rpc('review_lead', {p_token: state.token, p_lead: id, p_decision: decision, p_reason: reason || null});
+    toast(decision === 'approved' ? 'Approved' : decision === 'rejected' ? 'Rejected' : 'Back to pending');
+    if (decision !== 'pending' && i >= 0 && i + 1 < v.length) state.focusId = v[i + 1];
+    state.rejecting = null; await load();
+    const el = document.querySelector('.card.focus'); if (el) el.scrollIntoView({block: 'center'});
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+document.addEventListener('click', e => {
+  const src = e.target.closest('[data-src]');
+  if (src && state.unlocked) rpc('log_source_open', {p_token: state.token, p_lead: src.dataset.src}).catch(() => {});
+  const b = e.target.closest('button[data-act]');
+  if (!b) return;
+  const id = b.dataset.id, act = b.dataset.act;
+  if (act === 'approve') review(id, 'approved');
+  else if (act === 'reset') review(id, 'pending');
+  else if (act === 'rejectopen') { state.rejecting = id; renderLeads(); }
+  else if (act === 'rejectcancel') { state.rejecting = null; renderLeads(); }
+  else if (act === 'rejectgo') {
+    const card = b.closest('.card');
+    const reason = card.querySelector('[data-r="reason"]').value;
+    const note = card.querySelector('[data-r="note"]').value.trim();
+    review(id, 'rejected', note ? reason + ': ' + note : reason);
+  }
+});
+document.addEventListener('change', async e => {
+  const s = e.target.closest('select[data-ev]');
+  if (!s) return;
+  try { await rpc('set_event_state', {p_token: state.token, p_event: s.dataset.ev, p_state: s.value}); toast('Event updated'); await load(); }
+  catch (x) { toast('Failed: ' + x.message); await load(); }
+});
+['#fEvent', '#fMarket', '#fTier', '#fStatus'].forEach(id => $(id).addEventListener('change', e => { renderLeads(); e.target.blur(); }));
+
+/* ---------- keyboard triage ---------- */
+function moveFocus(d) {
+  const v = state.visible || []; if (!v.length) return;
+  const i = Math.max(0, v.indexOf(state.focusId));
+  state.focusId = v[Math.min(v.length - 1, Math.max(0, i + d))];
+  renderLeads();
+  const el = document.querySelector('.card.focus'); if (el) el.scrollIntoView({block: 'center'});
+}
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t.matches && t.matches('input, select, textarea')) {
+    const panel = t.closest && t.closest('.reject-panel');
+    if (panel && e.key === 'Enter') { e.preventDefault(); panel.querySelector('[data-act="rejectgo"]').click(); }
+    else if (panel && e.key === 'Escape') { state.rejecting = null; renderLeads(); }
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey || $('#tab-leads').hidden) return;
+  const lead = state.leads.find(l => l.id === state.focusId);
+  const k = e.key.toLowerCase();
+  if (k === 'j' || e.key === 'ArrowDown') { e.preventDefault(); moveFocus(1); }
+  else if (k === 'k' || e.key === 'ArrowUp') { e.preventDefault(); moveFocus(-1); }
+  else if (k === 'o' && lead) { const a = document.querySelector('.card.focus [data-src]'); if (a) a.click(); }
+  else if (k === 'a' && e.shiftKey && lead && lead.status === 'pending' && state.unlocked) { e.preventDefault(); review(lead.id, 'approved'); }
+  else if (k === 'r' && e.shiftKey && lead && lead.status === 'pending' && state.unlocked) {
+    e.preventDefault(); state.rejecting = lead.id; renderLeads();
+    const s = document.querySelector('.card.focus select[data-r="reason"]'); if (s) s.focus();
+  }
+  else if (e.key === 'Escape' && state.rejecting) { state.rejecting = null; renderLeads(); }
+});
+$('#refresh').onclick = load;
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', x === t ? 'true' : 'false'));
+  ['leads', 'events', 'health', 'system'].forEach(n => $('#tab-' + n).hidden = n !== t.dataset.tab);
+});
+
+(async () => {
+  if (state.token) await unlock(state.token).catch(() => {});
+  await load();
+  setInterval(load, 30000);
+})();
+</script>
+</body>
+</html>

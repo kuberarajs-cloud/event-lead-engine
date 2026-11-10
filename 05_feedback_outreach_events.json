@@ -1,0 +1,171 @@
+{
+  "name": "Lead Engine feedback: outreach events to Postgres",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "REPLACE_WITH_A_LONG_RANDOM_PATH",
+        "options": {}
+      },
+      "id": "311dfcc5-cdd6-4473-b07c-4f4f2c87f4b1",
+      "name": "Outreach webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -544,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{sb:'YOUR_SUPABASE_URL',key:'YOUR_SUPABASE_PUBLISHABLE_KEY',tok:'YOUR_INGEST_TOKEN',clay:'YOUR_CLAY_WEBHOOK_URL',clay_table:'YOUR_CLAY_TABLE_URL'}}];"
+      },
+      "id": "160215d1-50ad-4b6a-8805-fce3d6a6acbe",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const out = [];\nfor (const it of $('Outreach webhook').all()) {\n  const b = it.json.body || it.json;\n  const t = String(b.event_type || '');\n  let provider = null, type = null, emails = [], at = null, gm = null;\n  const detail = {source_event: t};\n  if (/^[A-Z_]+$/.test(t)) {\n    provider = 'smartlead';\n    const m = {EMAIL_SENT: 'sent', FIRST_EMAIL_SENT: 'sent', EMAIL_REPLY: 'reply', EMAIL_BOUNCE: 'bounce', LEAD_UNSUBSCRIBED: 'unsubscribe'};\n    type = m[t] || null;\n    if (t === 'LEAD_CATEGORY_UPDATED') {\n      const s = String((b.lead_data && b.lead_data.category && b.lead_data.category.sentiment_type) || '').toLowerCase();\n      type = s === 'positive' ? 'positive' : s === 'negative' ? 'negative' : 'neutral';\n      detail.category = typeof b.category === 'string' ? b.category : null;\n    }\n    emails = [b.lead_email, b.to_email, b.from_email].filter(Boolean);\n    at = b.time_sent || b.time_replied || b.event_timestamp || null;\n    const cf = b.lead_data && b.lead_data.custom_fields;\n    gm = (cf && !Array.isArray(cf) && cf.gm_lead_id) || null;\n  } else if (t) {\n    provider = 'instantly';\n    const m = {email_sent: 'sent', reply_received: 'reply', email_bounced: 'bounce', lead_unsubscribed: 'unsubscribe', lead_interested: 'positive', lead_not_interested: 'negative'};\n    type = m[t] || null;\n    emails = [b.lead_email].filter(Boolean);\n    at = b.timestamp || null;\n    gm = b.gm_lead_id || null;\n  }\n  if (!provider || !type) continue;\n  const ids = emails.map(e => String(e).toLowerCase()).sort();\n  emails = ids;\n  const key = [b.campaign_id || '', ids.join('+'), type, at || detail.category || ''].join('|');\n  detail.campaign = b.campaign_name || null;\n  out.push({json: {provider, event_type: type, dedupe_key: key, campaign_id: b.campaign_id == null ? null : String(b.campaign_id), event_time: at, emails, gm_lead_id: gm, detail}});\n}\nreturn out;"
+      },
+      "id": "bbaa645d-977e-4565-84f4-b2d370a309f0",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -64,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.sb }}/rest/v1/rpc/log_outreach_event",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $('Config').first().json.tok, p: $json}) }}",
+        "options": {}
+      },
+      "id": "d15aa959-fff0-42f1-93f3-9d47d5f50430",
+      "name": "Save event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        192,
+        0
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.sb }}/rest/v1/rpc/log_dlq",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $('Config').first().json.tok, p_workflow: 'outreach-events', p_node: 'Save event', p_payload: {dedupe_key: $json.dedupe_key || null}, p_error: String(($json.error && ($json.error.message || $json.error)) || 'unknown').slice(0, 500), p_retries: 0}) }}",
+        "options": {}
+      },
+      "id": "2107b73f-e7cb-4616-97d3-3baa8ab14a0c",
+      "name": "Log to DLQ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        432,
+        144
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Outreach webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "Save event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save event": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Log to DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}

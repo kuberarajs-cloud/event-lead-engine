@@ -1,0 +1,479 @@
+{
+  "name": "Lead Engine sourcing: rendered pages (Firecrawl)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "b6aa14b7-92ca-4605-89a5-d614a7ea9a3c",
+      "name": "Manual run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [
+                1
+              ],
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "id": "3e768f81-92dc-4717-a742-78c365895953",
+      "name": "Weekly 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{sb:'YOUR_SUPABASE_URL',key:'YOUR_SUPABASE_PUBLISHABLE_KEY',tok:'YOUR_INGEST_TOKEN'}}];"
+      },
+      "id": "ef84e0cf-e06a-4225-8ee6-276a460e2f9e",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pages that load their lists with JavaScript and need a rendered read. One entry per event.\nconst SCROLL = [{type: 'wait', milliseconds: 3000}];\nfor (let i = 0; i < 8; i++) { SCROLL.push({type: 'executeJavascript', script: 'window.scrollTo(0, document.body.scrollHeight)'}); SCROLL.push({type: 'wait', milliseconds: 2500}); }\nSCROLL.push({type: 'scrape'});\nconst TARGETS = [\n  {slug: 'ukisug-connect-2026', name: 'UKISUG Connect', market: 'UK', url: 'https://www.ukisugconnect.co.uk/event/home/agenda', exhibitors_url: 'https://www.ukisugconnect.co.uk/event/home/exhibitors', parser: 'cvent'}\n];\nreturn TARGETS.map(t => {\n  const m = t.url.match(/^(https?:\\/\\/[^\\/]+)(\\/[^?#\\s]*)?/);\n  return {json: {...t, origin: m[1], path: m[2] || '/', scroll_actions: SCROLL}};\n});"
+      },
+      "id": "14de39fd-023b-4a00-8422-aa168c93fdf8",
+      "name": "Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.origin + '/robots.txt' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "KuberCaseStudyBot/0.1 (research prototype; reads public speaker pages once, respects robots.txt)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      },
+      "id": "14c733f3-f82d-4b2a-b09d-2a9bbc186904",
+      "name": "Robots",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        672,
+        80
+      ],
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500
+    },
+    {
+      "parameters": {
+        "jsCode": "const plan = $('Plan').all();\nreturn $input.all().map((r, i) => {\n  const p = plan[i].json;\n  const txt = String(r.json.data || '');\n  let allowed = true, reason = 'ok';\n  if (!p.parser) {\n    allowed = false; reason = 'no_parser_for_' + p.origin;\n  } else {\n    const lines = txt.split(/\\r?\\n/).map(l => l.replace(/#.*/, '').trim()).filter(Boolean);\n    let applies = false;\n    const rules = [];\n    for (const l of lines) {\n      const m = l.match(/^([a-z-]+)\\s*:\\s*(.*)$/i);\n      if (!m) continue;\n      const k = m[1].toLowerCase(), v = m[2].trim();\n      if (k === 'user-agent') applies = v === '*';\n      else if (applies && (k === 'disallow' || k === 'allow')) rules.push([k, v]);\n    }\n    let best = null;\n    for (const [k, v] of rules) {\n      if (v && p.path.startsWith(v) && (!best || v.length > best[1].length)) best = [k, v];\n    }\n    if (best && best[0] === 'disallow') { allowed = false; reason = 'robots_disallow ' + best[1]; }\n  }\n  return {json: {...p, node: 'Gate', allowed, reason}};\n});"
+      },
+      "id": "1d5c4b3e-d3fa-419b-a3e4-ed477f96d3c2",
+      "name": "Gate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "afac637f-9ca4-4e62-a763-9731dda61e9e",
+              "leftValue": "={{ $json.allowed }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "32ea1475-8161-4519-a332-de5c3644eb82",
+      "name": "Allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({url: $json.url, formats: [\"html\"], onlyMainContent: false, timeout: 120000, actions: $json.scroll_actions}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 150000
+        }
+      },
+      "id": "5c559732-bcdc-47e5-8a59-65c383db517d",
+      "name": "Firecrawl",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const src = $('Gate').item.json;\nconst ag = $('Firecrawl').item.json || {};\nconst ex = $json || {};\nconst getHtml = r => {\n  const s = r.data && r.data.actions && r.data.actions.scrapes;\n  if (s && s.length) return String(s[s.length - 1].html || '');\n  return String((r.data && (r.data.html || r.data.rawHtml)) || '');\n};\nconst html = getHtml(ag);\nconst exHtml = getHtml(ex);\nconst shown = (html.match(/Showing (\\d+) sessions/) || [])[1] || null;\nconst dec = s => String(s || '')\n  .replace(/<[^>]+>/g, ' ')\n  .replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCharCode(parseInt(h, 16)))\n  .replace(/&#(\\d+);/g, (m, d) => String.fromCharCode(+d))\n  .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&nbsp;/g, ' ')\n  .replace(/\\s+/g, ' ').trim();\nconst base = {slug: src.slug, url: src.url, node: 'Parse', parser: src.parser};\nif (!html) return {json: {...base, found: 0, error: 'firecrawl_error: ' + String(ag.error || ag.message || ('no html, success=' + ag.success)).slice(0, 200), rows: []}};\n\nfunction inner(h, start) {\n  let depth = 1; const re = /<(\\/?)div\\b[^>]*>/g; re.lastIndex = start; let m;\n  while ((m = re.exec(h))) { if (m[1]) depth--; else depth++; if (depth === 0) return h.slice(start, m.index); }\n  return h.slice(start, start + 800);\n}\nconst people = [];\nconst open = /<div[^>]*class=\"[^\"]*speakerInfo___[^\"]*\"[^>]*>/g;\nlet om;\nwhile ((om = open.exec(html))) {\n  const body = inner(html, open.lastIndex);\n  const t = [...body.matchAll(/>([^<>]+)</g)].map(x => dec(x[1])).filter(Boolean);\n  if (t.length === 2) people.push({name: t[0], title: '', company: t[1]});\n  else if (t.length >= 3) people.push({name: t[0], title: t[1], company: t[t.length - 1]});\n  else if (t.length === 1) people.push({name: t[0], title: '', company: ''});\n}\n\n// Exhibitors are sellers. A speaker from an exhibiting company is a vendor, not a buyer.\nconst norm = s => String(s || '').toLowerCase().replace(/\\(.*?\\)/g, ' ').replace(/&/g, ' and ')\n  .replace(/\\b(ltd|limited|gmbh|plc|inc|llc|uk|group|the|and|co|ag|sa|bv|software|technologies|technology|consulting|solutions)\\b/g, ' ')\n  .replace(/[^a-z0-9]+/g, '');\nconst exhibitors = [...new Set([...exHtml.matchAll(/ExhibitorsStyles__placeholder___[a-z0-9]+[^\"]*\"[^>]*>([^<]+)</g)].map(m => norm(dec(m[1]))).filter(Boolean))];\nconst isExhibitor = company => {\n  const c = norm(company);\n  if (!c) return false;\n  return exhibitors.some(e => e === c || (e.length >= 5 && c.length >= 5 && (c.includes(e) || e.includes(c))));\n};\nconst FUNC = [\n  ['procurement', /procure|purchas|sourcing|einkauf|einkäuf|einkaeuf|beschaffung|supplier|\\bcpo\\b|\\bbuyers?\\b|category manag|indirect|\\bspend\\b/i],\n  ['supply chain', /supply\\s*(chain|officer)|\\bscm\\b|logistic|lieferkett|fulfil|warehouse|demand|planning|transport|materials?\\s+manag|inventory|trade compliance|global trade|customs/i],\n  ['finance ops', /finance|financial|accounting|payable|receivable|controll|treasury|\\bcfo\\b|shared service|business services|\\bgbs\\b|order[- ]to[- ]cash|procure[- ]to[- ]pay|\\bp2p\\b|\\bo2c\\b|\\bap\\b|\\bar\\b|credit|collections|billing|invoic|order management|\\bcash\\b/i],\n  ['operations or IT', /operations|operating officer|information officer|\\berp\\b|\\bsap\\b|transformation|digital|\\bcoo\\b|\\bcio\\b/i]\n];\nconst NONBUYER = /investor|venture|capital|angel|founder|professor|journalist|moderator|chefvolkswirt|economist|minister|politik|referent\\b|\\bhost\\b|author|keynote/i;\nconst ACADEMIC = /universit|hochschule|fraunhofer|institut\\b|akademie|academy/i;\nconst HIGH = /\\b(chief|cpo|cfo|coo|ceo|cio|cto|president|vice president|vp|svp|evp|head|director|direktor\\w*|vorstand\\w*|leiter\\w*|leitung|bereichsleit\\w*|abteilungsleit\\w*|geschäftsführ\\w*|managing|einkaufsleiter\\w*)\\b/i;\nconst MID = /\\b(manager|lead|senior|principal|teamleit\\w*)\\b/i;\nconst VENDOR = /\\b(software|saas|ai|labs?|platform|cloud|analytics|robotics|technolog\\w*|solutions?|consult\\w*|advisory|startup|ventures?)\\b/i;\n\nfunction tree(p) {\n  let fn = null;\n  if (!NONBUYER.test(p.title) && !ACADEMIC.test(p.company)) for (const [label, re] of FUNC) if (re.test(p.title)) { fn = label; break; }\n  if (!fn) return {tier: 'X', drop: true, detail: {path: 'function: no procurement, supply chain or finance role in title, so excluded'}};\n  const sr = HIGH.test(p.title) ? 'high' : MID.test(p.title) ? 'mid' : 'low';\n  if (sr === 'low') return {tier: 'C', detail: {function: fn, seniority: 'below manager', path: 'function yes (' + fn + '), seniority low, so C'}};\n  if (sr === 'mid') return {tier: 'B', detail: {function: fn, seniority: 'manager', path: 'function yes (' + fn + '), seniority manager, so B'}};\n  if (VENDOR.test(p.company)) return {tier: 'X', detail: {function: fn, seniority: 'senior', vendor: true, path: 'function yes (' + fn + '), seniority senior, company looks like a vendor, so X'}};\n  if (fn === 'operations or IT') return {tier: 'B', detail: {function: fn, seniority: 'senior', vendor: false, path: 'function broad (operations or IT), seniority senior, not a vendor, so B'}};\n  return {tier: 'A', detail: {function: fn, seniority: 'senior', vendor: false, path: 'function yes (' + fn + '), seniority senior, not a vendor, so A'}};\n}\n\n\nconst OWN = /^(SAP\\b|UKISUG\\b)/i;\nconst seen = new Set(); const rows = []; const tiers = {A: 0, B: 0, C: 0, X: 0};\nlet dropped = 0, noCompany = 0, ownOrg = 0, vendorByExhibitor = 0, noTitle = 0, unverified = 0;\nfor (const p of people) {\n  if (!p.name || !p.company) { noCompany++; continue; }\n  const key = (p.name + '|' + p.company).toLowerCase();\n  if (seen.has(key)) continue;\n  seen.add(key);\n  if (OWN.test(p.company)) { ownOrg++; continue; }\n  const sells = isExhibitor(p.company);\n  let tier, detail;\n  if (p.title) {\n    const r = tree(p);\n    if (r.drop) { dropped++; continue; }\n    tier = r.tier; detail = r.detail;\n    if (sells && tier !== 'X') { tier = 'X'; detail = Object.assign({}, detail, {vendor: true, path: detail.path + '; company exhibits at the event, so it is a vendor, X'}); }\n  } else {\n    if (sells || VENDOR.test(p.company)) { vendorByExhibitor++; continue; }\n    if (!exhibitors.length) { unverified++; continue; }\n    noTitle++;\n    tier = 'C';\n    detail = {function: null, seniority: 'unknown', path: 'role not listed on the agenda; company is not on the exhibitor list, so it looks like a customer at an SAP user group event, C. Reviewer to confirm the buyer role'};\n  }\n  tiers[tier]++;\n  rows.push({event_slug: src.slug, full_name: p.name, title: p.title || null, company: p.company, source_url: src.url,\n    source_kind: 'speaker (rendered agenda)',\n    data_lineage: 'Organiser agenda page (public), rendered with Firecrawl after a robots.txt check.',\n    tier, score_detail: detail});\n}\nlet error = null;\nif (!people.length) error = 'no_speaker_cards_found (page rendered, ' + html.length + ' bytes, markup may have changed)';\nelse if (!exhibitors.length && !rows.length) error = 'exhibitor_list_missing (' + unverified + ' speakers held back because vendors could not be told apart)';\nelse if (!rows.length) error = 'no_buyer_leads_from_rendered_agenda (' + seen.size + ' speakers read)';\nreturn {json: {...base, found: seen.size, exhibitors: exhibitors.length, dropped_by_tree: dropped, skipped_no_company: noCompany, own_org: ownOrg, vendor_by_exhibitor: vendorByExhibitor, held_back_no_exhibitor_list: unverified, no_title_tier_c: noTitle, sessions_shown: shown, tiers, error, rows}};"
+      },
+      "id": "da02ae10-eb57-4cf5-940e-e969b69e2086",
+      "name": "Parse",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1792,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2cf66a1c-9eb1-4fde-89f7-e2d16099e468",
+              "leftValue": "={{ $json.rows.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0a75e83c-1101-4b3a-bd91-e96688749e5d",
+      "name": "Has rows?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2016,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.sb }}/rest/v1/rpc/ingest_leads",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $('Config').first().json.tok, p_rows: $json.rows}) }}",
+        "options": {}
+      },
+      "id": "07f7b7a3-6097-4507-a5f0-3f6217080d2d",
+      "name": "Ingest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
+        -64
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.sb }}/rest/v1/rpc/log_dlq",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $('Config').first().json.tok, p_workflow: 'sourcing', p_node: $json.node || 'Ingest', p_payload: {slug: $json.slug || null, url: $json.url || null}, p_error: String(($json.error && ($json.error.message || $json.error)) || $json.reason || 'unknown').slice(0, 500), p_retries: 0}) }}",
+        "options": {}
+      },
+      "id": "6bd53e32-4fb7-48a9-a68a-90051f1a56c3",
+      "name": "Log to DLQ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2240,
+        192
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.firecrawl.dev/v2/scrape",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({url: $(\"Gate\").item.json.exhibitors_url, formats: [\"html\"], onlyMainContent: false, timeout: 120000, actions: $(\"Gate\").item.json.scroll_actions}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          },
+          "timeout": 150000
+        }
+      },
+      "id": "cb84fb1a-dc50-46bf-9c24-5cf7303d26ea",
+      "name": "Firecrawl exhibitors",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1568,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual run": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekly 08:00": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan": {
+      "main": [
+        [
+          {
+            "node": "Robots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Robots": {
+      "main": [
+        [
+          {
+            "node": "Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gate": {
+      "main": [
+        [
+          {
+            "node": "Allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Allowed?": {
+      "main": [
+        [
+          {
+            "node": "Firecrawl",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log to DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Firecrawl": {
+      "main": [
+        [
+          {
+            "node": "Firecrawl exhibitors",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse": {
+      "main": [
+        [
+          {
+            "node": "Has rows?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has rows?": {
+      "main": [
+        [
+          {
+            "node": "Ingest",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log to DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Log to DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Firecrawl exhibitors": {
+      "main": [
+        [
+          {
+            "node": "Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}

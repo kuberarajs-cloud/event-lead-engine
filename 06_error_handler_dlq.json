@@ -1,0 +1,98 @@
+{
+  "name": "Lead Engine error handler: unhandled failures to DLQ",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "153ff4a6-ac5b-43a3-9b30-1a3ce975da9e",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        -144,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\nreturn [{json: {sb:'YOUR_SUPABASE_URL', key:'YOUR_SUPABASE_PUBLISHABLE_KEY', tok:'YOUR_INGEST_TOKEN', wf: (e.workflow && e.workflow.name) || 'unknown', node: (e.execution && e.execution.lastNodeExecuted) || 'unknown', execution_id: (e.execution && e.execution.id) || null, msg: (e.execution && e.execution.error && e.execution.error.message) || 'unknown error'}}];"
+      },
+      "id": "a69a8b23-ac4e-4228-9c12-a432675abcca",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        96,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.sb }}/rest/v1/rpc/log_dlq",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $json.tok, p_workflow: $json.wf, p_node: $json.node, p_payload: {execution_id: $json.execution_id}, p_error: String($json.msg).slice(0, 500), p_retries: 0}) }}",
+        "options": {}
+      },
+      "id": "f8ac9bf8-b1f9-4882-ba7e-14fc66bcf871",
+      "name": "Log to DLQ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        336,
+        32
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Log to DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}

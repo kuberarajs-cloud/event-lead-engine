@@ -1,0 +1,722 @@
+{
+  "name": "Lead Engine approved leads: enrich and HubSpot dry run",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "006efaa2-3fd0-471d-bee0-4e2296118b06",
+      "name": "Manual run",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -800,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours"
+            }
+          ]
+        }
+      },
+      "id": "467bc6bd-a974-46d7-9d12-4c5a2ac3b975",
+      "name": "Hourly sweep",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -800,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "REPLACE_WITH_A_LONG_RANDOM_PATH",
+        "options": {}
+      },
+      "id": "e25e795b-de04-4163-a64b-b4d291b620dc",
+      "name": "Approved webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{sb:'YOUR_SUPABASE_URL',key:'YOUR_SUPABASE_PUBLISHABLE_KEY',tok:'YOUR_INGEST_TOKEN',clay:'YOUR_CLAY_WEBHOOK_URL',clay_table:'YOUR_CLAY_TABLE_URL'}}];"
+      },
+      "id": "ade8c8e1-0559-49b3-8513-5fc91b9f6776",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -576,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.sb }}/rest/v1/events_public?select=slug,name,market,city,date_label",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b07a495e-c2ee-43b5-b8a4-8d54f465c893",
+      "name": "Events",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -352,
+        48
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "jsCode": "const ev = {};\nfor (const i of $input.all()) ev[i.json.slug] = {name: i.json.name, market: i.json.market, city: i.json.city, date_label: i.json.date_label};\nreturn [{json: {ev}}];"
+      },
+      "id": "86ed4579-01be-4f1a-9928-aaf19522d644",
+      "name": "Pack",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -128,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.sb }}/rest/v1/rpc/claim_approved",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $('Config').first().json.tok, p_limit: 10}) }}",
+        "options": {}
+      },
+      "id": "c410718b-935c-4d39-a6ed-a736d39b5434",
+      "name": "Next approved",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        48
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "// EDIT ME: one sentence on what your company does. It is used in the outreach text below.\nconst PITCH_EN = 'YOUR_COMPANY builds AI that handles order and invoice exceptions inside ERP systems like SAP and Oracle, so your team only sees the cases that need a person.';\nconst PITCH_DE = 'YOUR_COMPANY baut KI, die Ausnahmen bei Bestellungen und Rechnungen direkt im ERP wie SAP oder Oracle bearbeitet. Ihr Team sieht nur noch die Fälle, die eine Person braucht.';\nconst ev = $('Pack').first().json.ev;\nconst RULE = {\n  DE: 'LinkedIn note first. No cold email in Germany (UWG section 7). Phone only after the reviewer records a concrete topical reason the person would expect this call (BVerwG 29 Jan 2025, 6 C 3/23). A job title or a public listing alone is not enough. Lawyer sign-off pending.',\n  UK: 'Email to a corporate address is possible (PECR). Name the sender, add an opt-out, check TPS/CTPS before any call.',\n  US: 'Email is possible (CAN-SPAM). Name the sender, add a postal address and an opt-out.'\n};\nconst FN = {'procurement': 'procurement', 'supply chain': 'supply chain', 'finance ops': 'finance operations', 'operations or IT': 'operations'};\nconst SAP = {\n  ap: {process: 'procure-to-pay', tcodes: ['MIRO', 'MIGO', 'OMR6', 'MR11'], pain: 'Invoices blocked in MIRO when price or quantity differs from the PO or the goods receipt (payment block reason R), and a GR/IR clearing account that has to be cleaned up at close.'},\n  purchasing: {process: 'procure-to-pay', tcodes: ['ME21N', 'MIRO', 'OMR6'], pain: 'Price and quantity variances between the PO (ME21N) and the invoice that break three-way matching, and the tolerance limits (OMR6) that decide what gets blocked.'},\n  goods: {process: 'procure-to-pay', tcodes: ['MIGO', 'VL01N', 'MIRO'], pain: 'Goods receipt (MIGO) discrepancies against the PO or the delivery that leave the invoice unmatched.'},\n  o2c: {process: 'order-to-cash', tcodes: ['VA01', 'VL01N', 'VKM1'], pain: 'Sales orders held in VA01 by credit or delivery blocks, and orders that stall between delivery (VL01N) and billing.'},\n  close: {process: 'procure-to-pay', tcodes: ['MR11', 'F.13', 'MIRO'], pain: 'GR/IR clearing account balances (MR11) that finance has to explain at month end.'},\n  it: {process: 'both', tcodes: ['OMR6', 'MIRO', 'VA01'], pain: 'Exception rules and tolerance keys (OMR6) that sit in SAP configuration and need a safe way to automate around them.'}\n};\nconst ROUTE = {\n  A: {depth: 'full', apollo_company_lookup: true, hiring_scan: true, contact_waterfall: 'premium, planned'},\n  B: {depth: 'standard', apollo_company_lookup: true, hiring_scan: false, contact_waterfall: 'single provider, planned'},\n  C: {depth: 'none', apollo_company_lookup: false, hiring_scan: false, contact_waterfall: 'none, ESI level 5 spends zero credits'}\n};\nconst WF_FULL = {status: 'planned, not running', credit_cap: 15, steps: [\n  {n: 1, provider: 'Apollo people match', input: 'name and company domain', run_if: 'always', stop_if: 'email status is valid'},\n  {n: 2, provider: 'Cognism', input: 'name and company domain', run_if: 'no valid email yet and the market is DE or UK', stop_if: 'email status is valid'},\n  {n: 3, provider: 'Datagma', input: 'name and company, or the LinkedIn URL if the reviewer added one', run_if: 'still no valid email', stop_if: 'email status is valid'},\n  {n: 4, provider: 'Email verifier', input: 'any email that was found', run_if: 'an email exists and is not verified yet', stop_if: 'valid is accepted, risky is held, invalid moves on to the next provider'}\n], write_back: 'save_contact: email, source provider and status', phone: 'only after a valid email, and never for DE until the call basis is recorded'};\nconst WF_ONE = {status: 'planned, not running', credit_cap: 3, steps: [\n  {n: 1, provider: 'Apollo people match', input: 'name and company domain', run_if: 'always', stop_if: 'email status is valid'},\n  {n: 2, provider: 'Email verifier', input: 'any email that was found', run_if: 'an email exists and is not verified yet', stop_if: 'valid is accepted, anything else is held'}\n], write_back: 'save_contact: email, source provider and status', phone: 'none'};\nconst ESI_TABLE = {\n  2: {label: 'Emergent', gtm: 'Tier A champion with a live hiring signal', apollo_calls_max: 2, ai_research: true, waterfall: WF_FULL, spend: 'Highest priority. Top-tier providers and AI drafting first (planned).'},\n  3: {label: 'Urgent', gtm: 'Tier A champion or economic buyer', apollo_calls_max: 2, ai_research: true, waterfall: WF_FULL, spend: 'Standard waterfall with a spend cap per account (planned cap: 15 credits).'},\n  4: {label: 'Non-urgent, one resource', gtm: 'Tier B account with a generic fit', apollo_calls_max: 1, ai_research: false, waterfall: WF_ONE, spend: 'Single provider only. No AI agent research.'},\n  5: {label: 'No resources', gtm: 'Tier C or X: junior, operations or out of scope', apollo_calls_max: 0, ai_research: false, waterfall: null, spend: 'Zero API credits. The CRM payload keeps the name only.'}\n};\nconst ESI_LEVEL = {A: 3, B: 4, C: 5, X: 5};\nfunction esiFor(tier) {\n  const level = ESI_LEVEL[tier] || 5;\n  return {scale: 'Emergency Severity Index (Wuerz and Eitel)', level, ...ESI_TABLE[level], level_1: 'not used, there is no inbound intent in an event pipeline', level_2_rule: 'a tier A lead moves up to level 2 when the hiring scan finds finance, procurement or ERP roles'};\n}\nfunction acctKey(name) {\n  return String(name || '').toLowerCase().replace(/&/g, ' and ').replace(/\\b(gmbh|mbh|ag|se|kg|kgaa|co|inc|llc|ltd|plc|corp|corporation|group|holding|company|sa|nv|bv|ohg|limited)\\b\\.?/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim().replace(/ /g, '-');\n}\nfunction sapFor(title, fn) {\n  const t = String(title || '');\n  if (/payable|kreditor|invoic|rechnung|shared service|\\bgbs\\b|business services|\\bp2p\\b|procure[- ]to[- ]pay|\\bap\\b/i.test(t)) return SAP.ap;\n  if (/order[- ]to[- ]cash|\\bo2c\\b|order management|billing|credit|collections|receivable|debitor|auftrag|\\bar\\b/i.test(t)) return SAP.o2c;\n  if (fn === 'procurement') return SAP.purchasing;\n  if (fn === 'supply chain') return SAP.goods;\n  if (fn === 'finance ops') return SAP.close;\n  return SAP.it;\n}\nreturn $input.all().filter(i => i.json && i.json.id).map(i => {\n  const l = i.json;\n  const e = ev[l.event_slug] || {};\n  const market = e.market || 'US';\n  const parts = String(l.full_name).trim().split(/\\s+/);\n  const first = parts[0];\n  const last = parts.slice(1).join(' ');\n  const sd = l.score_detail || {};\n  const s = sapFor(l.title, sd.function);\n  const sapp = {process: s.process, tcodes: s.tcodes, hypothesis: s.pain, basis: 'Role-based hypothesis from title and function. The ERP in use and the real pain at this account are not verified.', committee_role: sd.role || null};\n  const callBasis = market === 'DE'\n    ? {required: true, status: 'blocked_until_evidence', topical_link: null, hint: 'Find a concrete public link between this person and ' + s.process + ' exceptions (session abstract, talk, post) and record it before any call task exists.', rule: 'BVerwG 29 Jan 2025, 6 C 3/23: a business call needs at least presumed consent, shown by a concrete interest of the recipient in the offer. Lawyer sign-off pending.', recorded_by: null, recorded_at: null}\n    : {required: false, status: 'not_required', rule: 'No call rule beyond the market rule in channel_rule.'};\n  const prior = /edition/i.test(l.source_kind || '');\n  const ed = ((String(l.source_kind || '').match(/\\((\\d{4}) edition\\)/)) || [])[1];\n  const evName = String(l.event_name || '').replace(/\\s*\\(BME\\)\\s*$/, '');\n  const de = market === 'DE';\n  const opener = de\n    ? 'Guten Tag ' + first + ' ' + last + ', ich habe gesehen, dass Sie ' + (prior && !ed ? 'beim letzten ' : 'beim ') + evName + (prior ? (ed ? ' ' + ed : '') + ' gesprochen haben' : ' als Sprecher dabei sind') + '. ' + PITCH_DE + ' Wenn das bei ' + l.company + ' ein Thema ist, zeige ich gern kurz, wie andere Teams das lösen. Haben Sie Zeit für ein kurzes Gespräch?'\n    : 'Hi ' + first + ', I saw you ' + (prior ? (ed ? 'spoke at the ' + ed + ' edition of ' : 'spoke at last year\\'s ') : 'are on the speaker list for ') + evName + '. ' + PITCH_EN + ' If that is a pain point at ' + l.company + ', I would be glad to share how other teams approach it. Open to a short call?';\n  const note = l.full_name + ', ' + l.title + ' at ' + l.company + '. ' + (prior ? 'Listed as a speaker at the previous edition of ' : 'Listed as a speaker at ') + l.event_name + ' (' + (prior ? 'next edition ' : '') + (e.date_label || 'date n/a') + ', ' + (e.city || 'city n/a') + '). Why it fits: ' + (sd.path || 'n/a') + '. Source: ' + l.source_url + '. Likely SAP angle (hypothesis from the role, not verified): ' + sapp.hypothesis + ' T-codes: ' + sapp.tcodes.join(', ') + '. Not known yet: work email, ERP in use, whether this person owns the exception workload. Next step: confirm the role on the source page, then find the person in Sales Navigator (manual).';\n  const esi = esiFor(l.tier);\n  const incumbent_hypothesis = sd.competitor_host ? {basis: 'The event host sells overlapping software, so this account may already use it.', stance: 'Treat it as a contract-expiry trigger to research and a messaging input, not a disqualifier.', verified: false} : null;\n  const enrichment = {\n    version: 2, esi, incumbent_hypothesis, sap_pain: sapp, call_basis: callBasis, scoring: {node: sd.node || null, role: sd.role || null, path: sd.path || null}, route: ROUTE[l.tier] || ROUTE.C,\n    draft_kind: 'template draft (the LLM step plugs in here)',\n    research_note: note,\n    opener,\n    language: de ? 'de' : 'en',\n    channel_rule: RULE[market] || RULE.US,\n    apollo: {status: 'not_run', reason: 'No Apollo API key connected. Production: enrich approved leads only, best tier first.'},\n    clay: {status: 'not_run', reason: 'No Clay table connected yet. Production: one row per approved lead.'},\n    generated_at: new Date().toISOString()\n  };\n  const hubspot = {\n    dry_run: true,\n    note: 'Never sent. Contacts upsert on the unique property gm_lead_id, so no email is needed. Companies upsert on gm_account_key, and the Apollo domain is stored as a normal property.',\n    dedupe: {\n      contact: {object: 'contacts', idProperty: 'gm_lead_id', value: l.id, why: 'Unique custom property. HubSpot only dedupes contacts on email by default, and event leads have no email yet.', second_match: 'email, once enrichment finds one'},\n      company: {object: 'companies', idProperty: 'gm_account_key', value: acctKey(l.company), why: 'Always known at approval. The Apollo domain is written as a normal property.', setup: 'Create both properties once as unique-value text properties before the first live write.'}\n    },\n    company: {object: 'companies', properties: {name: l.company, gm_account_key: acctKey(l.company), gm_erp_system: 'unverified'}},\n    contact: {object: 'contacts', properties: {\n      firstname: first, lastname: last, jobtitle: l.title, company: l.company,\n      lifecyclestage: 'lead', hs_lead_status: 'NEW',\n      gm_source_event: l.event_name, gm_source_url: l.source_url, gm_icp_tier: l.tier,\n      gm_function: FN[sd.function] || null, gm_market: market, gm_lead_id: l.id, gm_committee_role: sd.role || null, gm_scoring_node: sd.node || null, gm_sap_process: sapp.process, gm_sap_tcodes: sapp.tcodes.join(';'), gm_sap_pain_hypothesis: sapp.hypothesis, gm_erp_system: 'unverified', gm_call_basis_status: callBasis.status, gm_enrichment_depth: (ROUTE[l.tier] || ROUTE.C).depth, gm_esi_level: esi.level\n    }}\n  };\n  return {json: {lead_id: l.id, enrichment, hubspot, clay_row: {lead_id: l.id, full_name: l.full_name, title: l.title, company: l.company, event: l.event_name, market, tier: l.tier, source_url: l.source_url, opener, research_note: note, sap_process: sapp.process, sap_tcodes: sapp.tcodes.join(', '), committee_role: sd.role || null, esi_level: esi.level}}};\n});"
+      },
+      "id": "ce38cffc-ec67-480c-bc11-713433ab1e3b",
+      "name": "Build",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.sb }}/rest/v1/rpc/save_enrichment",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $('Config').first().json.tok, p_lead: $json.lead_id, p_enrichment: $json.enrichment, p_hubspot: $json.hubspot, p_clay_url: $json.clay_url}) }}",
+        "options": {}
+      },
+      "id": "a1b96209-fd6a-435e-94e3-6cedf6533786",
+      "name": "Save",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2560,
+        48
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.sb }}/rest/v1/rpc/log_dlq",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $('Config').first().json.tok, p_workflow: 'approved-leads', p_node: 'Save', p_payload: {lead_id: $json.lead_id || null}, p_error: String(($json.error && ($json.error.message || $json.error)) || 'unknown').slice(0, 500), p_retries: 0}) }}",
+        "options": {}
+      },
+      "id": "35df9759-ed58-48fd-b3ca-74e7b0a551e4",
+      "name": "Log to DLQ",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2784,
+        48
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.clay }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.clay_row) }}",
+        "options": {}
+      },
+      "id": "66cbf662-c569-4393-b88c-c9f9bd1e47cd",
+      "name": "Clay",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2112,
+        48
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const b = $('Apollo merge').item.json;\nconst err = $json && $json.error;\nconst cfg = $('Config').first().json;\nconst clay = err\n  ? {status: 'failed', reason: String(err.message || err).slice(0, 200)}\n  : {status: 'sent', table: cfg.clay_table, sent_at: new Date().toISOString()};\nreturn {json: {lead_id: b.lead_id, enrichment: {...b.enrichment, clay}, hubspot: b.hubspot, clay_url: err ? null : cfg.clay_table}};"
+      },
+      "id": "e04135f2-6cc9-4b80-b592-76c600191264",
+      "name": "Finish",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2336,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apollo.io/api/v1/organizations/search",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={{ JSON.stringify({q_organization_name: $json.hubspot.company.properties.name, page: 1, per_page: 5}) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "fa322a5b-992a-4fa2-97db-a731ea085ed7",
+      "name": "Apollo search",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        992,
+        -16
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const b = $('Build').item.json;\nconst tier = b.clay_row.tier;\nconst want = String(b.hubspot.company.properties.name || '');\nconst norm = s => String(s || '').toLowerCase().replace(/&/g, ' and ').replace(/\\b(gmbh|mbh|ag|se|kg|kgaa|co|inc|llc|ltd|plc|corp|corporation|group|holding|company|sa|nv|bv|ohg|limited)\\b\\.?/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();\nif ($json.error || !$json.body) return {json: {tier, org: null, run_hiring: false, error: 'Apollo call failed: ' + String(($json.error && $json.error.message) || $json.error || 'no response').slice(0, 140)}};\nif ($json.statusCode !== 200) return {json: {tier, org: null, run_hiring: false, error: 'Apollo returned status ' + $json.statusCode}};\nconst orgs = $json.body.organizations || [];\nconst w = norm(want);\nlet best = null, match = null;\nfor (const o of orgs) { const n = norm(o.name); if (n && n === w) { best = o; match = 'exact'; break; } }\nif (!best) for (const o of orgs) { const n = norm(o.name); if (n && w && (n.startsWith(w + ' ') || w.startsWith(n + ' '))) { best = o; match = 'close'; break; } }\nconst org = best ? {id: best.id, name: best.name, primary_domain: best.primary_domain, industry: best.industry, estimated_num_employees: best.estimated_num_employees, organization_revenue_printed: best.organization_revenue_printed, linkedin_url: best.linkedin_url} : null;\nreturn {json: {tier, org, match, reason: org ? null : (orgs.length ? 'No Apollo company matched the name closely enough.' : 'No Apollo result for this name.'), run_hiring: !!org && tier === 'A'}};"
+      },
+      "id": "167d55f7-105a-4414-8642-d5ca6ca6a619",
+      "name": "Apollo pick",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1216,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ecbd96b7-912d-4a3b-b5f0-822833657acf",
+              "leftValue": "={{ $json.run_hiring }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9faa3b98-8be6-4888-9005-4c89d44931e7",
+      "name": "Apollo gate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1440,
+        -16
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.apollo.io/api/v1/organizations/' + $json.org.id + '/job_postings' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={{ JSON.stringify({page: 1, per_page: 100}) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "d99db158-9fc8-46d3-bbca-5c17d00372ef",
+      "name": "Apollo hiring",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1664,
+        -96
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const b = $('Build').item.json;\nif (b.enrichment.esi && b.enrichment.esi.apollo_calls_max === 0) {\n  const skipped = {status: 'skipped', reason: 'ESI level 5 spends zero API credits, so no company lookup was made.', looked_up_at: new Date().toISOString()};\n  const enr0 = {...b.enrichment, research_note: b.enrichment.research_note + ' Company lookup (Apollo): skipped. ESI level 5 spends zero credits.', apollo: skipped};\n  return {json: {lead_id: b.lead_id, enrichment: enr0, hubspot: JSON.parse(JSON.stringify(b.hubspot)), clay_row: b.clay_row}};\n}\nconst pick = $('Apollo pick').item.json;\nconst RELEVANT = /procure|purchas|sourcing|supply chain|accounts? (payable|receivable)|order[- ]to[- ]cash|procure[- ]to[- ]pay|\\bp2p\\b|\\bo2c\\b|financ|controll|billing|invoic|collections|\\bsap\\b|\\berp\\b|netsuite|shared service/i;\nconst ranHiring = !!($json && $json.body && Array.isArray($json.body.organization_job_postings));\nlet hiring = null;\nif (ranHiring) {\n  const posts = $json.body.organization_job_postings;\n  const total = ($json.body.pagination && $json.body.pagination.total_entries) || posts.length;\n  const rel = posts.filter(p => RELEVANT.test(p.title || ''));\n  hiring = {status: 'ok', open_postings: total, scanned: posts.length, relevant_in_scan: rel.length, examples: rel.slice(0, 3).map(p => p.title)};\n} else if (pick.org && pick.tier !== 'A') {\n  hiring = {status: 'skipped', reason: 'Credits are reserved for tier A leads.'};\n} else if (pick.org) {\n  hiring = {status: 'failed', reason: 'The hiring lookup returned nothing.'};\n}\nconst at = new Date().toISOString();\nlet apollo;\nif (pick.org) {\n  const o = pick.org;\n  apollo = {status: 'ok', match: pick.match, company: o.name, domain: o.primary_domain || null, industry: o.industry || null, employees: o.estimated_num_employees || null, revenue: o.organization_revenue_printed || null, linkedin: o.linkedin_url || null, hiring, person_level: 'not available on the Apollo Free plan, so no email or phone', looked_up_at: at};\n} else {\n  apollo = {status: pick.error ? 'failed' : 'no_match', reason: pick.error || pick.reason || 'No match.', looked_up_at: at};\n}\nlet add;\nif (apollo.status === 'ok') {\n  add = ' Company (Apollo, ' + apollo.match + ' match): ' + [apollo.domain, apollo.industry, apollo.employees ? apollo.employees + ' employees' : null, apollo.revenue ? 'revenue ' + apollo.revenue : null].filter(Boolean).join(', ') + '.';\n  if (hiring && hiring.status === 'ok') add += ' Hiring: ' + hiring.open_postings + ' open roles' + (hiring.relevant_in_scan ? ', ' + hiring.relevant_in_scan + ' finance, procurement or ERP roles among the first ' + hiring.scanned + (hiring.examples.length ? ' (e.g. ' + hiring.examples.join('; ') + ')' : '') : ', none in finance, procurement or ERP among the first ' + hiring.scanned) + '.';\n} else {\n  add = ' Company lookup (Apollo): ' + apollo.reason;\n}\nlet esi = b.enrichment.esi;\nif (esi.level === 3 && hiring && hiring.status === 'ok' && hiring.relevant_in_scan > 0) esi = {...esi, ...{level: 2, label: 'Emergent', gtm: 'Tier A champion with a live hiring signal', upgraded_by: 'hiring scan found ' + hiring.relevant_in_scan + ' finance, procurement or ERP roles'}, apollo_calls_max: esi.apollo_calls_max};\nconst enrichment = {...b.enrichment, esi, research_note: b.enrichment.research_note + add, apollo};\nconst hubspot = JSON.parse(JSON.stringify(b.hubspot));\nhubspot.note = 'Never sent. Contacts upsert on gm_lead_id and companies on gm_account_key, so no email is needed. The company domain comes from Apollo when the name matched.';\nhubspot.contact.properties.gm_esi_level = esi.level;\nif (apollo.status === 'ok') {\n  if (apollo.domain) hubspot.company.properties.domain = apollo.domain;\n  if (apollo.employees) hubspot.company.properties.numberofemployees = apollo.employees;\n  hubspot.company.properties.gm_apollo_match = apollo.match;\n}\nconst clay_row = {...b.clay_row, esi_level: esi.level, research_note: enrichment.research_note, company_domain: apollo.domain || null, company_employees: apollo.employees || null};\nreturn {json: {lead_id: b.lead_id, enrichment, hubspot, clay_row}};"
+      },
+      "id": "a4fbfbb9-faf5-47fb-bed3-43b898289d7e",
+      "name": "Apollo merge",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        48
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.sb }}/rest/v1/rpc/dlq_replay",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $('Config').first().json.tok, p_limit: 20}) }}",
+        "options": {}
+      },
+      "id": "fb8de1c5-673d-491c-8c0f-205145db41a7",
+      "name": "DLQ replay",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        96,
+        48
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "alwaysOutputData": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "8ef0d23c-7ba5-42ab-aec0-e3527aac4065",
+              "leftValue": "={{ $json.enrichment.esi.apollo_calls_max > 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6f3618fb-5dc5-4a91-acaa-9913e0fd7e15",
+      "name": "Apollo route",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        768,
+        48
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual run": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hourly sweep": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Events": {
+      "main": [
+        [
+          {
+            "node": "Pack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pack": {
+      "main": [
+        [
+          {
+            "node": "DLQ replay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Next approved": {
+      "main": [
+        [
+          {
+            "node": "Build",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build": {
+      "main": [
+        [
+          {
+            "node": "Apollo route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Log to DLQ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Clay": {
+      "main": [
+        [
+          {
+            "node": "Finish",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finish": {
+      "main": [
+        [
+          {
+            "node": "Save",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo search": {
+      "main": [
+        [
+          {
+            "node": "Apollo pick",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo pick": {
+      "main": [
+        [
+          {
+            "node": "Apollo gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo gate": {
+      "main": [
+        [
+          {
+            "node": "Apollo hiring",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Apollo merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo hiring": {
+      "main": [
+        [
+          {
+            "node": "Apollo merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo merge": {
+      "main": [
+        [
+          {
+            "node": "Clay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DLQ replay": {
+      "main": [
+        [
+          {
+            "node": "Next approved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apollo route": {
+      "main": [
+        [
+          {
+            "node": "Apollo search",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Apollo merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "tags": []
+}

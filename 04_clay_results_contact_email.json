@@ -1,0 +1,178 @@
+{
+  "name": "Lead Engine Clay results: contact email to Postgres",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "REPLACE_WITH_A_LONG_RANDOM_PATH",
+        "options": {}
+      },
+      "id": "bb40d02a-d81a-4f28-baf0-912d57006d77",
+      "name": "Clay results webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{json:{sb:'YOUR_SUPABASE_URL',key:'YOUR_SUPABASE_PUBLISHABLE_KEY',tok:'YOUR_INGEST_TOKEN',clay:'YOUR_CLAY_WEBHOOK_URL',clay_table:'YOUR_CLAY_TABLE_URL'}}];"
+      },
+      "id": "11e88c76-d6b4-4c9f-8a0b-d7a7e4da4c2e",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $('Clay results webhook').first().json.body || {};\nconst email = String(b.email || '').trim().toLowerCase();\nconst lead = String(b.lead_id || '').trim();\nconst ok = /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email) && /^[0-9a-f-]{36}$/i.test(lead);\nreturn ok ? [{json: {lead_id: lead, email, source: String(b.source || 'clay')}}] : [];"
+      },
+      "id": "61b1ba58-833f-4d93-9d0d-2370044738e6",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "emailVerifier",
+        "email": "={{ $json.email }}"
+      },
+      "id": "66496b02-0dfa-4bb3-90b2-8d817d3b4e0b",
+      "name": "Hunter verify",
+      "type": "n8n-nodes-base.hunter",
+      "typeVersion": 1,
+      "position": [
+        672,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const g = $('Normalize').item.json;\nconst v = $json || {};\nconst st = String(v.status || 'unknown');\nconst map = {valid: 'valid', accept_all: 'accept_all', invalid: 'invalid', disposable: 'invalid', webmail: 'unknown', unknown: 'unknown', block: 'unknown'};\nreturn {json: {p_lead: g.lead_id, p_email: g.email, p_source: g.source, p_status: map[st] || 'unknown'}};"
+      },
+      "id": "6b5863e4-4b46-4213-9d47-fb0d5f929a7f",
+      "name": "Contact result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.sb }}/rest/v1/rpc/save_contact",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Config').first().json.key }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({p_token: $('Config').first().json.tok, p_lead: $json.p_lead, p_email: $json.p_email, p_source: $json.p_source, p_status: $json.p_status}) }}",
+        "options": {}
+      },
+      "id": "cde524cc-94d8-44cf-930e-481e8dc2297c",
+      "name": "Save contact",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        0
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Clay results webhook": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "Hunter verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hunter verify": {
+      "main": [
+        [
+          {
+            "node": "Contact result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact result": {
+      "main": [
+        [
+          {
+            "node": "Save contact",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "tags": []
+}
